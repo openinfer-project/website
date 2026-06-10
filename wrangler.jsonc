@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "openinfer-website",
+	"name": "openinfer",
 	"compatibility_date": "2026-06-10",
 	"assets": {
 		"directory": "./dist",
