@@ -21,6 +21,10 @@ export default defineConfig({
 			sidebar: [
 				{ label: 'Getting Started', slug: 'getting-started' },
 				{
+					label: 'Blog',
+					items: [{ label: 'OpenInfer 0.1.0', slug: 'blog/openinfer-010' }],
+				},
+				{
 					label: 'Models',
 					items: [{ label: 'Qwen3-4B', slug: 'models/qwen3-4b' }],
 				},
