@@ -24,7 +24,10 @@ export default defineConfig({
 					label: 'Blogs',
 					items: [
 						{ label: 'All Posts', slug: 'blog' },
-						{ label: 'OpenInfer 0.1.0', slug: 'blog/openinfer-010' },
+						{
+							label: 'OpenInfer 0.1.0: Production-Grade Rust Inference',
+							slug: 'blog/openinfer-010',
+						},
 					],
 				},
 				{

@@ -1,5 +1,5 @@
 ---
-title: OpenInfer 0.1.0
+title: "OpenInfer 0.1.0: Writing a Production-Grade Inference Engine in Rust"
 description: An English translation of the OpenInfer 0.1.0 release blog.
 ---
 
