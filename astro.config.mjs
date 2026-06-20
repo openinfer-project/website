@@ -28,6 +28,10 @@ export default defineConfig({
 							label: 'OpenInfer 0.1.0: Production-Grade Rust Inference',
 							slug: 'blog/openinfer-010',
 						},
+						{
+							label: 'Green Contexts',
+							slug: 'blog/green-ctx',
+						},
 					],
 				},
 				{
