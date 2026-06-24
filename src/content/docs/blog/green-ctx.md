@@ -1,6 +1,6 @@
 ---
 title: "Co-locating Prefill and Decode on One GPU: Green Contexts for Higher Throughput"
-description: A direct English translation of the Green Contexts blog.
+description: "Using CUDA Green Contexts to co-locate prefill and decode on one GPU — splitting SMs to stabilize decode latency (TPOT) without losing throughput. Benchmarked on RTX 5070 Ti and H200."
 ---
 
 CUDA Green Contexts documentation: [docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/green-contexts.html](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/green-contexts.html)
