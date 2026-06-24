@@ -1,6 +1,6 @@
 ---
 title: "OpenInfer 0.1.0: Writing a Production-Grade Inference Engine in Rust"
-description: An English translation of the OpenInfer 0.1.0 release blog.
+description: "How we built openinfer 0.1.0, a production-grade LLM inference engine in pure Rust + CUDA with no PyTorch — the footprint and cold-start wins Rust bought us, and the architecture behind them."
 ---
 
 Code: [github.com/openinfer-project/openinfer](https://github.com/openinfer-project/openinfer)
