@@ -193,15 +193,25 @@ cargo run --release -- \
   --dflash-draft-model-path models/dspark_qwen3_4b_block7
 ```
 
-Single-stream TPOT drops from 6.5 ms to 3.7 ms at c1 (2× decode speedup from
-amortizing target forwards over accepted drafts). Concurrency sweep, greedy,
-random dataset, 1024-in / 128-out:
+Single-stream TPOT drops from 5.8 ms to 3.0 ms — roughly 2× decode
+speedup from amortizing target forwards over accepted drafts. Concurrency
+sweep, greedy, sharegpt + SPEED-Bench (coding) datasets:
 
-| Concurrency | output tok/s | TTFT p50 | TPOT p50 |
-| ---: | ---: | ---: | ---: |
-| 1 | 266.1 | 44.0 ms | 3.67 ms |
-| 4 | 731.1 | 55.2 ms | 5.05 ms |
-| 8 | 1026.1 | 57.1 ms | 7.01 ms |
+**ShareGPT:**
+
+| Concurrency | baseline tok/s | DSpark tok/s | baseline TPOT p50 | DSpark TPOT p50 |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 170 | **381** | 5.83 ms | 2.96 ms |
+| 4 | 576 | **1288** | 6.72 ms | 3.59 ms |
+
+**SPEED-Bench (coding):**
+
+| Concurrency | baseline tok/s | DSpark tok/s | baseline TPOT p50 | DSpark TPOT p50 |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 164 | **314** | 5.87 ms | 3.07 ms |
+| 4 | 574 | **988** | 6.73 ms | 3.77 ms |
+
+DSpark roughly doubles throughput and halves TPOT across both datasets.
 
 DFlash (the non-Markov predecessor,
 [`dflash_qwen3_4b_block7`](https://huggingface.co/deepseek-ai/dflash_qwen3_4b_block7))
