@@ -75,10 +75,10 @@ cargo run --release -- --model-path models/Qwen3-8B
 ## Performance
 
 Measured on **1x RTX 5090 32GB**, driver 590.48.01, CUDA 13.1 build,
-Qwen3-4B BF16 weights, TP1. openinfer main `70888b2`, same `vllm bench serve`
-client, same host, same GPU, prefix cache on, seed 42, input 1024 / output 128
-for the QPS sweep. Reproducible via `tools/bench/run_serving_bench.sh` in the
-repo.
+Qwen3-4B BF16 weights, TP1. openinfer main `70888b2`, vLLM 0.24.0, same
+`vllm bench serve` client, same host, same GPU, prefix cache on, seed 42,
+input 1024 / output 128 for the QPS sweep. Reproducible via
+`tools/bench/run_serving_bench.sh` in the repo.
 
 ![Qwen3-4B RTX 5090 benchmark summary](/models/qwen3-4b/perf.png)
 
@@ -88,7 +88,7 @@ for methodology and discussion.
 
 ### Footprint
 
-| Metric | openinfer | vLLM 0.22.1 |
+| Metric | openinfer | vLLM 0.24.0 |
 | --- | ---: | ---: |
 | RSS before stress, loaded and idle | **771 MB** | 3814 MB |
 | RSS after stress | **1064 MB** | 3863 MB |
@@ -105,19 +105,19 @@ through `mmap`; steady-state settles at 771 MB after load.
 Poisson arrivals, 1024-token prompts, 128-token outputs, greedy
 (`--temperature 0`):
 
-| QPS | output tok/s | TTFT p50 | TPOT p50 |
-| ---: | ---: | ---: | ---: |
-| 1 | 126.3 | 45.2 ms | 6.53 ms |
-| 2 | 252.3 | 30.3 ms | 6.93 ms |
-| 4 | 504.1 | 48.8 ms | 8.30 ms |
-| 8 | 1007.8 | 51.1 ms | 11.39 ms |
-| 10 | 1258.3 | 53.4 ms | 13.55 ms |
-| 12 | 1507.7 | 60.0 ms | 16.75 ms |
-| 16 | 1979.9 | 203.8 ms | 46.92 ms |
+| QPS | openinfer out tok/s | vLLM out tok/s | openinfer TTFT p50 | vLLM TTFT p50 | openinfer TPOT p50 | vLLM TPOT p50 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 126.3 | 126.2 | 45.2 ms | 54.9 ms | 6.53 ms | 6.71 ms |
+| 2 | 252.3 | 252.2 | 30.3 ms | 38.4 ms | 6.93 ms | 7.08 ms |
+| 4 | 504.1 | 503.3 | 48.8 ms | 38.7 ms | 8.30 ms | 7.95 ms |
+| 8 | 1007.8 | 1006.9 | 51.1 ms | 66.9 ms | 11.39 ms | 11.97 ms |
+| 10 | 1258.3 | 1256.3 | 53.4 ms | 76.3 ms | 13.55 ms | 14.11 ms |
+| 12 | 1507.7 | 1506.2 | 60.0 ms | 106.0 ms | 16.75 ms | 18.36 ms |
+| 16 | **1979.9** | 1687.9 | **203.8 ms** | 3832.3 ms | **46.92 ms** | 79.42 ms |
 
-Low load (QPS 1–4) holds sub-10 ms TPOT. At QPS 8–12 the engine sustains
-throughput linearly with gradually rising TPOT. QPS 16 is beyond saturation
-(peak concurrency 147) but still completes all requests without errors.
+Low load (QPS 1–4) is comparable. At QPS 8–12 openinfer leads on both TTFT
+and TPOT. At QPS 16 both systems are overloaded, but openinfer edges ahead
+on throughput (1980 vs 1688 output tok/s) and stays 19× lower on TTFT.
 
 ### Qwen3-8B Serving Load
 
@@ -125,12 +125,12 @@ Same harness, Qwen3-8B BF16, single RTX 5090 (32 GB). The 8B model is 2×
 the weights of 4B; throughput scales accordingly until the GPU saturates
 around QPS 8:
 
-| QPS | output tok/s | TTFT p50 | TPOT p50 |
-| ---: | ---: | ---: | ---: |
-| 1 | 125.1 | 82.2 ms | 11.55 ms |
-| 2 | 249.9 | 54.1 ms | 11.46 ms |
-| 4 | 498.6 | 88.1 ms | 16.08 ms |
-| 8 | 991.9 | 148.0 ms | 30.97 ms |
+| QPS | openinfer out tok/s | vLLM out tok/s | openinfer TTFT p50 | vLLM TTFT p50 | openinfer TPOT p50 | vLLM TPOT p50 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 125.1 | 125.0 | 82.2 ms | 97.4 ms | 11.55 ms | 11.63 ms |
+| 2 | 249.9 | 250.0 | 54.1 ms | 61.5 ms | 11.46 ms | 11.57 ms |
+| 4 | 498.6 | 498.5 | 88.1 ms | 103.6 ms | 16.08 ms | 16.24 ms |
+| 8 | 991.9 | 990.4 | 148.0 ms | 235.1 ms | 30.97 ms | 35.56 ms |
 
 ### Warm Prefix-Cache TTFT
 
@@ -149,7 +149,7 @@ once to populate GPU KV cache, then sent warm:
 | 16384 | 1143.9 ms | **26.3 ms** | 27.9 ms | 95.6 ms | 98.2 ms |
 
 openinfer wins warm TTFT at every measured length; the 16k warm-cache path
-is 3.6x faster than vLLM p50.
+is 3.6× faster than vLLM p50.
 
 ### KV Offload
 
