@@ -174,17 +174,18 @@ about 126 ms, cold prefill about 1.14 s.
 
 ### DSpark Speculative Decoding
 
-[DSpark](https://github.com/deepseek-ai/DeepSpec) (DeepSeek-AI, Jun 2026)
-adds a semi-autoregressive Markov head to a DFlash parallel drafter, raising
-accepted draft length by conditioning each block position on the previously
-sampled token. openinfer supports it behind `--dflash-draft-model-path` —
-the drafter checkpoint goes in, the target model serves as-is, and greedy
-verify keeps output lossless.
+[DSpark](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7)
+(DeepSeek-AI, Jun 2026) adds a semi-autoregressive Markov head to a DFlash
+parallel drafter, raising accepted draft length by conditioning each block
+position on the previously sampled token. openinfer supports it behind
+`--dflash-draft-model-path` — the drafter checkpoint goes in, the target
+model serves as-is, and greedy verify keeps output lossless.
 
 ```bash
 # Download the released DSpark block7 drafter
 huggingface-cli download deepseek-ai/dspark_qwen3_4b_block7 \
   --local-dir models/dspark_qwen3_4b_block7
+# https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7
 
 # Launch with speculative decoding (greedy, single-GPU)
 cargo run --release -- \
@@ -202,9 +203,10 @@ random dataset, 1024-in / 128-out:
 | 4 | 731.1 | 55.2 ms | 5.05 ms |
 | 8 | 1026.1 | 57.1 ms | 7.01 ms |
 
-DFlash (the non-Markov predecessor) is also supported via the same flag with
-a DFlash-format drafter checkpoint. DSpark is the recommended drafter for
-Qwen3-4B.
+DFlash (the non-Markov predecessor,
+[`dflash_qwen3_4b_block7`](https://huggingface.co/deepseek-ai/dflash_qwen3_4b_block7))
+is also supported via the same flag with a DFlash-format drafter checkpoint.
+DSpark is the recommended drafter for Qwen3-4B.
 
 ## Architecture Notes
 
