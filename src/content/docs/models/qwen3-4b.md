@@ -80,12 +80,6 @@ Qwen3-4B BF16 weights, TP1. openinfer main `70888b2`, vLLM 0.24.0, same
 input 1024 / output 128 for the QPS sweep. Reproducible via
 `tools/bench/run_serving_bench.sh` in the repo.
 
-![Qwen3-4B RTX 5090 benchmark summary](/models/qwen3-4b/perf.png)
-
-Serving load, warm prefix-cache TTFT, and KV offload numbers are in the
-chart above. See the [OpenInfer 0.1.0 release post](/blog/openinfer-010/)
-for methodology and discussion.
-
 ### Footprint
 
 | Metric | openinfer | vLLM 0.24.0 |
