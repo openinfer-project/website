@@ -1,6 +1,16 @@
 ---
 title: openinfer
 description: "Pure Rust + CUDA LLM inference engine — no PyTorch, OpenAI-compatible, serving models from Qwen3 to the trillion-parameter Kimi-K2."
+# Starlight renders the homepage <title> as "openinfer | openinfer"
+# (page title | site title). Override it with a descriptive one so the
+# homepage also ranks for category terms, not just the brand name.
+head:
+  - tag: title
+    content: "openinfer — Pure Rust + CUDA LLM Inference Engine"
+  - tag: meta
+    attrs:
+      property: og:title
+      content: "openinfer — Pure Rust + CUDA LLM Inference Engine"
 ---
 
 A from-scratch LLM inference engine in pure Rust + CUDA. OpenAI-compatible. Serves Qwen3 to Kimi-K2.

@@ -112,7 +112,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Models',
-					items: [{ label: 'Qwen3-4B', link: '/models/qwen3-4b/' }],
+					items: [{ label: 'Qwen3-4B / 8B / 32B', link: '/models/qwen3-4b/' }],
 				},
 			],
 		}),

@@ -1,6 +1,6 @@
 ---
-title: Qwen3-4B
-description: "Running Qwen3-4B on openinfer: launch, serving performance, and architecture notes."
+title: Qwen3-4B / 8B / 32B
+description: "Running Qwen3-4B, 8B, and 32B on openinfer: launch, serving performance, speculative decoding, and architecture notes."
 ---
 
 Qwen3-4B is the default openinfer model line: pure Rust + CUDA, no Python at
