@@ -150,5 +150,6 @@ For CI/CD, connect the repo in the Cloudflare dashboard with build command `npm 
 ## Related docs
 
 - Human-oriented overview: [README.md](./README.md)
+- Choosing blog titles / topics: [.claude/skills/seo-keyword-eval/SKILL.md](./.claude/skills/seo-keyword-eval/SKILL.md) — measure keyword demand and competition before writing
 - Starlight docs: https://starlight.astro.build/
 - Astro content collections: https://docs.astro.build/en/guides/content-collections/
