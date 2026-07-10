@@ -101,6 +101,10 @@ export default defineConfig({
 					items: [
 						{ label: 'All Posts', link: '/blog/' },
 						{
+							label: 'See Qwen3 Decode as a CUDA Graph',
+							link: '/blog/cuda-graph-export/',
+						},
+						{
 							label: 'OpenInfer 0.1.0: Production-Grade Rust Inference',
 							link: '/blog/openinfer-010/',
 						},
