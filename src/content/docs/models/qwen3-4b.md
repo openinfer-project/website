@@ -33,7 +33,7 @@ The server exposes an OpenAI-compatible `/v1/completions` endpoint:
 ```bash
 curl -s http://localhost:8000/v1/completions \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "The capital of France is", "max_tokens": 32}'
+  -d '{"model": "models/Qwen3-4B", "prompt": "The capital of France is", "max_tokens": 32}'
 ```
 
 Streaming:
@@ -41,7 +41,7 @@ Streaming:
 ```bash
 curl -N http://localhost:8000/v1/completions \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Write a haiku about Rust:", "max_tokens": 64, "stream": true}'
+  -d '{"model": "models/Qwen3-4B", "prompt": "Write a haiku about Rust:", "max_tokens": 64, "stream": true}'
 ```
 
 Useful Qwen3 flags:
