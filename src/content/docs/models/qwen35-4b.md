@@ -97,18 +97,12 @@ Qwen3.5 scheduler does not yet bound concurrent prefill workspace the
 way it bounds KV. Higher-concurrency serving at this prompt shape needs
 a larger-VRAM GPU.
 
-## Architecture Notes
+## Notes
 
-- Hybrid attention: 24 linear-attention layers (gated delta rule) + 8
-  full-attention layers, `full_attention_interval: 4`, head dim 256.
-- Only the 8 full-attention layers keep a paged KV cache; the linear
-  layers carry a fixed-size recurrent state per request, so KV memory
-  grows with context length at 1/4 the rate of an equivalent
-  full-attention stack.
-- The linear-attention chunkwise prefill kernels are Triton AOT-compiled
-  at build time (`OPENINFER_TRITON_PYTHON`); decode-critical paths are
-  hand-written CUDA, attention/sampling use FlashInfer.
+- Only the 8 full-attention layers keep a paged KV cache; the 24
+  linear-attention layers carry a fixed-size per-request state, so KV
+  memory grows with context length at 1/4 the rate of a full-attention
+  stack.
 - CUDA Graph decode is on by default; disable with `--cuda-graph=false`
-  for debugging.
-- Greedy and sampled decoding are supported; prefix caching is not yet
-  wired up for the hybrid KV/recurrent state.
+  for debugging. Greedy and sampled decoding are supported; prefix
+  caching is not yet wired up for the hybrid KV/recurrent state.
