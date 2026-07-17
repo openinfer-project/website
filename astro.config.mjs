@@ -1,7 +1,10 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
+import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
+import rehypeKatex from 'rehype-katex';
+import remarkMath from 'remark-math';
 
 const SITE = 'https://open-infer.org';
 // TODO(seo): replace with a dedicated 1200x630 social card at /og-card.png.
@@ -12,6 +15,12 @@ const OG_IMAGE = `${SITE}/favicon.png`;
 export default defineConfig({
 	site: SITE,
 	trailingSlash: 'always',
+	markdown: {
+		processor: unified({
+			remarkPlugins: [remarkMath],
+			rehypePlugins: [rehypeKatex],
+		}),
+	},
 	integrations: [
 		sitemap(),
 		starlight({
@@ -66,6 +75,13 @@ export default defineConfig({
 						href: 'https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Roboto+Mono:ital,wght@0,400;0,500;1,400&display=swap',
 					},
 				},
+				{
+					tag: 'link',
+					attrs: {
+						rel: 'stylesheet',
+						href: 'https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css',
+					},
+				},
 				{ tag: 'meta', attrs: { property: 'og:image', content: OG_IMAGE } },
 				{ tag: 'meta', attrs: { name: 'twitter:image', content: OG_IMAGE } },
 				{
@@ -100,6 +116,10 @@ export default defineConfig({
 					label: 'Blogs',
 					items: [
 						{ label: 'All Posts', link: '/blog/' },
+						{
+							label: 'Speculative Decoding',
+							link: '/blog/speculative-decoding/',
+						},
 						{
 							label: 'See Qwen3 Decode as a CUDA Graph',
 							link: '/blog/cuda-graph-export/',

@@ -16,6 +16,9 @@
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/starlight": "^0.40.0",
     "astro": "^6.4.5",
+    "katex": "^0.17.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
