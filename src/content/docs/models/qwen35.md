@@ -1,12 +1,12 @@
 ---
 title: Qwen3.5-4B / 9B / 27B
-description: "Running the Qwen3.5 family on openinfer: build with the qwen35-4b feature, launch, serving performance, and hybrid-attention architecture notes."
+description: "Running the Qwen3.5 family on openinfer: build with the qwen35 feature, launch, serving performance, and hybrid-attention architecture notes."
 ---
 
 Qwen3.5 is a hybrid-attention model line: 3 of every 4 layers use linear
 attention (gated delta rule), and only every 4th layer is full attention.
 openinfer serves the family (4B / 9B / 27B, text-only) behind the
-`qwen35-4b` cargo feature with CUDA Graph decode and paged KV cache for
+`qwen35` cargo feature with CUDA Graph decode and paged KV cache for
 the full-attention layers.
 
 ## Build
@@ -32,7 +32,7 @@ From the openinfer workspace root:
 huggingface-cli download Qwen/Qwen3.5-4B --local-dir models/Qwen3.5-4B
 
 export CUDA_HOME=/usr/local/cuda
-cargo run --release --features qwen35-4b -- --model-path models/Qwen3.5-4B
+cargo run --release --features qwen35 -- --model-path models/Qwen3.5-4B
 ```
 
 The server exposes an OpenAI-compatible `/v1/completions` endpoint:
@@ -62,7 +62,7 @@ The same feature flag serves the larger Qwen3.5 sizes — point
 config:
 
 ```bash
-cargo run --release --features qwen35-4b -- --model-path models/Qwen3.5-9B
+cargo run --release --features qwen35 -- --model-path models/Qwen3.5-9B
 ```
 
 All three sizes are gated by the same HF bf16 logits golden tests
