@@ -8,7 +8,7 @@ export const SITE_ROUTES = [
 	'/blog/openinfer-010/',
 	'/blog/green-ctx/',
 	'/models/qwen3-4b/',
-	'/models/qwen35-4b/',
+	'/models/qwen35/',
 ];
 
 export const DIST_PAGES = [
@@ -21,5 +21,10 @@ export const DIST_PAGES = [
 	'blog/openinfer-010/index.html',
 	'blog/green-ctx/index.html',
 	'models/qwen3-4b/index.html',
-	'models/qwen35-4b/index.html',
+	'models/qwen35/index.html',
+];
+
+export const REDIRECTS = [
+	['/models/qwen35-4b', '/models/qwen35/', 301],
+	['/models/qwen35-4b/', '/models/qwen35/', 301],
 ];
