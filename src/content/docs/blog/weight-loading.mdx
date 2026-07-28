@@ -14,7 +14,7 @@ import StagingHero from '../../../components/StagingHero.astro';
 
 更快的引擎启动速度意味着什么？
 1. 推理研究者更快的开发反馈循环：修改 kernel、调度策略后，更快得到 e2e 结果。
-2. 更低的扩缩容冷启动延迟：流量上涨时，几秒钟拉起新副本承接流量，包括 Serverless Inference。
+2. 更低的扩缩容冷启动延迟：对 Qwen3-4B/8B 这类模型，流量上涨时可在几秒内拉起新副本承接流量，包括 Serverless Inference。
 3. 让调度器可以进行更细粒度的资源重组：P/D 角色转换时，不用再担心转换过程中可能数十分钟的启动时间。
 
 > 本文先解释 OpenInfer 是如何加载权重，以及如何一步步优化权重加载的。再分析一组独立的传输实验。
@@ -211,14 +211,16 @@ GPU 7：experts [224, 256)
 
 OpenInfer 是怎么优化这个阶段的耗时呢？
 
-我们比较三种方式：
+为拆解不同传输路径的成本，我们在独立 microbenchmark 中比较三种方式：
 
 
 | 方案 | 数据路径 | 优势 | 主要成本 |
 | --- | --- | --- | --- |
-| Pageable mmap（默认） | page-cache-backed pages → H2D → GPU | 实现直接，无显式 pinned 生命周期 | 无法控制内部过程进行 overlap |
+| Pageable mmap（实验基线） | page-cache-backed pages → H2D → GPU | 实现直接，无显式 pinned 生命周期 | 无法控制内部过程进行 overlap |
 | Double pinned staging | mmap → 多线程 CPU copy → 2×64 MiB pinned → async H2D | CPU fill 与 DMA 重叠；固定 128 MiB pinned footprint | 多一次 CPU copy |
 | Full registered mmap | 注册整段 mmap → direct H2D → 注销 | 纯 DMA phase 快，H2D 时无需 staging copy | register/unregister 随页数增长且平台敏感 |
+
+这三种是 microbenchmark 的对比路径，并非 OpenInfer Qwen3 的运行时选项；当前 OpenInfer Qwen3 使用 Double pinned staging。
 
 数据来自真实硬件读取真实模型 safetensors 的 hot-page-cache microbenchmark（CUDA context setup 等初始化路径对三条路径相同，统一排除）。
 
@@ -284,7 +286,7 @@ RTX 5090 上，测试大小区间内 registration 近似线性，约 432 ms/GiB�
 | Final interleaved H200 batch | Setup | Pipeline | Free | 总时间 |
 | --- | --- | --- | --- | --- |
 | <b>Current 2-slot</b> | 38.2 ms | 247.2 ms | 11.6 ms | <b>297.0 ms</b> |
-| Eager 5-slot ring | 95.2 ms | 232.7 ms | 28.1 ms | 356.5 ms |
+| Eager 5-slot ring | 95.2 ms | 232.7 ms | 28.1 ms | 356.0 ms |
 | Best lazy ring, 2→5 | 38.3 ms | 279.7 ms | 28.1 ms | 346.0 ms |
 
 每块 64 MiB slot 的 pinned lifecycle 约为 19.0 ms allocation + 5.6 ms free，增加 buffer 本身也会带来开销。
@@ -370,7 +372,7 @@ Qwen3 系列启动时间 2-3s，权重加载不到 1s，剩下的时间在做什
 | # | 阶段 | 耗时 | 占比 |
 | --- | --- | --- | --- |
 | 1 | Tokenizer 加载 + 权重 shard mmap/prefetch（3 个 shard，8.0 GB） | ~0.44 s | 9% |
-| 2 | 权重上传 GPU（398 次 upload，two-slot pinned staging，≈6.7 GB/s） | ~1.24 s | 26% |
+| 2 | 权重上传 GPU（398 次 upload；包含 two-slot pinned staging 与 Vector 类直传路径，整体约 6.7 GB/s） | ~1.24 s | 26% |
 | 3 | cuBLASLt decode GEMM 调优（8 个 N≤32 bucket × 6 个 projection，7400+ 次 GEMM kernel） | ~2.3 s | 48% |
 | 4 | CUDA module 加载 + 纯 CPU 初始化（57 次 cuLibraryLoadData 占 187 ms） | ~0.5 s | 10% |
 | 5 | Memory profiling（dummy decode + 最大形状 unified forward + sampling，记峰值定 KV budget） | ~0.15 s | 3% |
