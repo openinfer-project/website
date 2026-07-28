@@ -4,10 +4,13 @@ description: "解析 OpenInfer 如何从 Safetensors 索引定位权重、处理
 ---
 
 import StagingPipeline from '../../../components/StagingPipeline.astro';
+import StagingHero from '../../../components/StagingHero.astro';
 
 作者：[FeathBow](https://github.com/FeathBow)、[Jinyang Su](https://github.com/xiaguan)
 
 **OpenInfer 启动 Qwen3-4B 服务，仅需 2.36 秒。**<br />**即便是约 700 GiB 级别的 GLM-5.2-FP8，也只需 25.73 秒。**
+
+<StagingHero />
 
 更快的引擎启动速度意味着什么？
 1. 推理研究者更快的开发反馈循环：修改 kernel、调度策略后，更快得到 e2e 结果。

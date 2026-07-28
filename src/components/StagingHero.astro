@@ -1,0 +1,329 @@
+---
+/**
+ * StagingHero — 权重加载博客开头的速览动画（像素风）。
+ *
+ * shard → 2×64 MiB pinned slots → GPU 的迷你数据路径，
+ * GPU bar 为 16 个像素 cell，按 chunk 交替染 A/B 色；
+ * 计数器对应 H200 上 8 GiB 连续区间的实测端到端 267.7 ms。
+ * 无 JS / prefers-reduced-motion 时渲染最终静态帧。
+ */
+const ariaLabel =
+	'全文速览：从 safetensors shard 取出当前 GPU 需要的 bytes，经两块 64 MiB pinned slot 流水进入显存。计数器对应 H200 上 8 GiB 连续区间的实测端到端 267.7 ms（hot-page-cache microbenchmark，非完整模型启动；见第 4 节）。';
+---
+
+<figure class="sh" data-sh role="img" aria-label={ariaLabel}>
+	<div class="sh-flow">
+		<div class="sh-node sh-file">
+			<span class="sh-name">model-00001-of-00003.safetensors</span>
+			<span class="sh-sub">byte range · page cache</span>
+		</div>
+		<div class="sh-link" />
+		<div class="sh-stage">
+			<div class="sh-row">
+				<span class="sh-tag sh-a">A</span>
+				<div class="sh-slot"><i class="sh-a" /></div>
+			</div>
+			<div class="sh-row">
+				<span class="sh-tag sh-b">B</span>
+				<div class="sh-slot"><i class="sh-b" /></div>
+			</div>
+			<span class="sh-sub">2 × 64 MiB pinned</span>
+		</div>
+		<div class="sh-link" />
+		<div class="sh-node sh-gpu">
+			<div class="sh-bar">
+				{Array.from({ length: 16 }, () => <i class="sh-c" />)}
+			</div>
+			<span class="sh-stat">
+				<b class="sh-gib">8.0</b> / 8 GiB · t = <b class="sh-ms">267.7</b> ms
+			</span>
+		</div>
+	</div>
+	<figcaption>double pinned staging · 8 GiB → 267.7 ms（H200）</figcaption>
+</figure>
+
+<style>
+	.sh {
+		--sh-a: #526cfe;
+		--sh-b: #e64a1d;
+		margin: 1.5rem 0 2rem;
+		padding: 1rem;
+		border: 2px solid var(--sl-color-gray-1);
+		box-shadow: 4px 4px 0 var(--sl-color-hairline-light);
+		background: var(--sl-color-bg);
+	}
+	:global(:root[data-theme='dark']) .sh {
+		--sh-a: #8b9cff;
+		--sh-b: #ff8a55;
+		box-shadow: 4px 4px 0 #000;
+	}
+
+	.sh-flow {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.sh-flow,
+	.sh-node,
+	.sh-stage,
+	.sh-row,
+	.sh-slot,
+	.sh-slot i,
+	.sh-bar,
+	.sh-c,
+	.sh figcaption,
+	.sh-stat {
+		margin: 0;
+	}
+
+	.sh-node,
+	.sh-stage {
+		border: 1px solid var(--sl-color-hairline);
+		background: var(--sl-color-bg-sidebar);
+		padding: 0.5rem 0.625rem;
+	}
+	.sh-file {
+		flex: 0 1 auto;
+		min-width: 0;
+	}
+	.sh-name {
+		display: block;
+		font-family: var(--sl-font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: var(--sl-color-gray-1);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.sh-sub {
+		display: block;
+		font-family: var(--sl-font-mono);
+		font-size: 0.625rem;
+		color: var(--sl-color-gray-3);
+		margin-top: 0.2rem;
+		white-space: nowrap;
+	}
+
+	.sh-link {
+		flex: 1 0 0.75rem;
+		height: 2px;
+		background: repeating-linear-gradient(90deg, var(--sl-color-gray-4) 0 6px, transparent 6px 12px);
+		background-size: 12px 2px;
+	}
+	.sh-anim .sh-link {
+		animation: sh-flow 0.5s steps(2) infinite;
+	}
+	@keyframes sh-flow {
+		from {
+			background-position: 0 0;
+		}
+		to {
+			background-position: 12px 0;
+		}
+	}
+
+	.sh-stage {
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+	.sh-row {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+	}
+	.sh-tag {
+		flex: 0 0 auto;
+		width: 0.875rem;
+		height: 0.875rem;
+		font-family: var(--sl-font-mono);
+		font-size: 0.5625rem;
+		font-weight: 700;
+		line-height: 0.875rem;
+		text-align: center;
+		color: #fff;
+	}
+	.sh-tag.sh-a {
+		background: var(--sh-a);
+	}
+	.sh-tag.sh-b {
+		background: var(--sh-b);
+	}
+	.sh-slot {
+		width: 4.25rem;
+		height: 0.875rem;
+		border: 1px solid var(--sl-color-hairline-light);
+		background: var(--sl-color-bg);
+	}
+	.sh-slot i {
+		display: block;
+		height: 100%;
+		width: 100%;
+	}
+	.sh-slot i.sh-a {
+		background: var(--sh-a);
+	}
+	.sh-slot i.sh-b {
+		background: var(--sh-b);
+	}
+	.sh-stage .sh-sub {
+		text-align: center;
+		margin-top: 0;
+	}
+
+	.sh-gpu {
+		flex: 1 0 auto;
+		min-width: 9rem;
+	}
+	.sh-bar {
+		display: flex;
+		gap: 2px;
+		height: 0.875rem;
+		padding: 2px;
+		border: 1px solid var(--sl-color-hairline-light);
+		background: var(--sl-color-bg);
+	}
+	.sh-c {
+		flex: 1;
+		background: var(--c);
+	}
+	.sh-c:nth-child(4n + 1),
+	.sh-c:nth-child(4n + 2) {
+		--c: var(--sh-a);
+	}
+	.sh-c:nth-child(4n + 3),
+	.sh-c:nth-child(4n + 4) {
+		--c: var(--sh-b);
+	}
+	.sh-stat {
+		display: block;
+		font-family: var(--sl-font-mono);
+		font-size: 0.6875rem;
+		color: var(--sl-color-gray-3);
+		margin-top: 0.35rem;
+		white-space: nowrap;
+	}
+	.sh-stat b {
+		color: var(--sl-color-gray-1);
+		font-weight: 700;
+	}
+
+	.sh figcaption {
+		margin-top: 0.625rem;
+		font-family: var(--sl-font-mono);
+		font-size: 0.6875rem;
+		color: var(--sl-color-gray-3);
+	}
+
+	/* 动画态：默认静态帧 = slot 满、cell 全亮、计数器终值 */
+	.sh-anim .sh-slot i {
+		width: 0;
+	}
+	.sh-anim .sh-c {
+		background: var(--sl-color-gray-5);
+	}
+	.sh-anim .sh-c.on {
+		background: var(--c);
+	}
+
+	@media (max-width: 40rem) {
+		.sh-flow {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.sh-link {
+			flex: 0 0 1.25rem;
+			width: 2px;
+			margin: 0 auto;
+			background: repeating-linear-gradient(180deg, var(--sl-color-gray-4) 0 6px, transparent 6px 12px);
+			background-size: 2px 12px;
+		}
+		@keyframes sh-flow {
+			from {
+				background-position: 0 0;
+			}
+			to {
+				background-position: 0 12px;
+			}
+		}
+		.sh-slot {
+			flex: 1;
+			width: auto;
+		}
+	}
+</style>
+
+<script>
+	const shReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	if (!shReduced) {
+		document.querySelectorAll<HTMLElement>('[data-sh]').forEach((root) => {
+			root.classList.add('sh-anim');
+
+			const GIB = 8;
+			const TOTAL_MS = 267.7;
+			const PLAY = 4200; // 0 → 267.7 ms 的播放时长
+			const HOLD = 1400; // 定格满帧
+			const CYCLE = PLAY + HOLD;
+			const CHUNKS = 8;
+
+			const slotA = root.querySelector<HTMLElement>('.sh-slot i.sh-a')!;
+			const slotB = root.querySelector<HTMLElement>('.sh-slot i.sh-b')!;
+			const cells = Array.from(root.querySelectorAll<HTMLElement>('.sh-c'));
+			const gib = root.querySelector<HTMLElement>('.sh-gib')!;
+			const ms = root.querySelector<HTMLElement>('.sh-ms')!;
+
+			let raf = 0;
+			let t0 = 0;
+			let playing = false;
+
+			const render = (now: number) => {
+				if (!t0) t0 = now;
+				const el = (now - t0) % CYCLE;
+				const p = Math.min(el / PLAY, 1);
+
+				// slot 脉冲：8 个 chunk 交替 fill A/B，宽度按 8 档量化保持像素感；
+				// 未轮到的一方保持满槽（正在 DMA）
+				const phase = (el / PLAY) * CHUNKS;
+				if (p < 1) {
+					const idx = Math.floor(phase);
+					const frac = phase - idx;
+					const w = Math.round(Math.min(frac / 0.8, 1) * 8) * 12.5;
+					(idx % 2 === 0 ? slotA : slotB).style.width = w + '%';
+				} else {
+					slotA.style.width = '100%';
+					slotB.style.width = '100%';
+				}
+
+				// GPU bar：16 个 cell 离散点亮，颜色随 chunk 奇偶交替 A/B
+				const n = Math.min(Math.floor(p * cells.length + 1e-6), cells.length);
+				cells.forEach((c, i) => c.classList.toggle('on', i < n));
+
+				gib.textContent = (GIB * p).toFixed(1);
+				ms.textContent = (TOTAL_MS * p).toFixed(1);
+
+				raf = requestAnimationFrame(render);
+			};
+
+			const start = () => {
+				if (playing) return;
+				playing = true;
+				t0 = 0;
+				raf = requestAnimationFrame(render);
+			};
+			const stop = () => {
+				playing = false;
+				cancelAnimationFrame(raf);
+			};
+
+			const io = new IntersectionObserver(
+				(entries) => {
+					entries.forEach((en) => (en.isIntersecting ? start() : stop()));
+				},
+				{ threshold: 0.35 },
+			);
+			io.observe(root);
+		});
+	}
+</script>
