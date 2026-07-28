@@ -1,0 +1,379 @@
+---
+title: "OpenInfer Weight Loading: The Complete Data Path from Safetensors to GPU"
+description: "Explains how OpenInfer locates weights from the Safetensors index, handles TP/FP8/EP sharding, and uses two-slot pinned staging to overlap CPU preparation with asynchronous H2D—and why a faster local stage did not lead to a faster total time."
+---
+
+import StagingPipeline from '../../../components/StagingPipeline.astro';
+import StagingHero from '../../../components/StagingHero.astro';
+
+Authors: [FeathBow](https://github.com/FeathBow), [Jinyang Su](https://github.com/xiaguan)
+
+**OpenInfer starts a Qwen3-4B service in just 2.36 seconds.**<br />**Even the roughly 700 GiB GLM-5.2-FP8 takes only 25.73 seconds.**
+
+<StagingHero />
+
+What does faster engine startup mean?
+1. A faster development feedback loop for inference researchers: get e2e results faster after modifying kernels or scheduling strategies.
+2. Lower autoscaling cold-start latency: for models such as Qwen3-4B/8B, new replicas can be started within seconds to handle rising traffic, including Serverless Inference.
+3. Finer-grained resource reorganization for schedulers: when switching P/D roles, there is no longer a need to worry about startup taking tens of minutes during the transition.
+
+> This article first explains how OpenInfer loads weights and how it optimizes weight loading step by step. It then analyzes a set of independent transfer experiments.
+
+## TL;DR
+
+- **How weights move from Safetensors to the GPU**
+- **How TP, FP8, and EP change the loading process**
+- **How OpenInfer optimizes the transfer path**
+
+
+
+## How Safetensors Lays Out Weights
+
+After downloading the `Qwen/Qwen3-4B` weights from Hugging Face, the local directory contains the model configuration, tokenizer, weight index, and three safetensors shards:
+
+```
+Qwen3-4B/
+├── config.json                         # 36 layers, hidden=2560, BF16…
+├── generation_config.json
+├── tokenizer.json
+├── tokenizer_config.json
+├── vocab.json
+├── merges.txt
+├── model.safetensors.index.json        # tensor name → shard file
+├── model-00001-of-00003.safetensors    # 3,957,900,840 bytes ≈ 3.69 GiB
+├── model-00002-of-00003.safetensors    # 3,987,450,520 bytes ≈ 3.71 GiB
+└── model-00003-of-00003.safetensors    #    99,630,640 bytes ≈ 95 MiB
+```
+
+These files fall into three categories:
+
+- `config.json` records the model structure: number of layers, hidden size, model family, context length, and so on. The engine reads these fields to validate weight shapes and build the corresponding execution layout.
+- The tokenizer files handle conversion between text and token IDs.
+- `model-*.safetensors` stores tensor payloads, which are the actual weights; the index maps tensor names to shards.
+
+Take Qwen3-4B's `model.safetensors.index.json` as an example. It has two top-level fields, `metadata` and `weight_map`, and looks roughly like this:
+
+```json
+{
+  "metadata": {
+    "total_size": 8044936192
+  },
+  "weight_map": {
+    "model.embed_tokens.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.input_layernorm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.down_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.gate_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.up_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.post_attention_layernorm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.k_norm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.k_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.o_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.q_norm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.q_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.v_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.16.self_attn.q_proj.weight": "model-00002-of-00003.safetensors",
+    "model.layers.35.self_attn.v_proj.weight": "model-00002-of-00003.safetensors",
+    "model.layers.35.input_layernorm.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.mlp.down_proj.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.mlp.up_proj.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.post_attention_layernorm.weight": "model-00003-of-00003.safetensors",
+    "model.norm.weight": "model-00003-of-00003.safetensors"
+  }
+}
+```
+
+The full index contains 398 entries: 1 embedding, 36 layers × 11 tensors per layer, and 1 final norm, or `1 + 36 × 11 + 1 = 398`. `metadata.total_size = 8,044,936,192` is the total size of all tensor payloads, about 7.49 GiB.
+
+The physical structure of a shard is:
+
+```
+[8-byte little-endian header length]
+[JSON header: tensor name → dtype / shape / data_offsets]
+[contiguous raw tensor payload bytes]
+```
+
+Locating a weight tensor is also straightforward: tensor name → shard → byte range
+
+```python
+# model.safetensors.index.json
+tensor_to_shard = {
+    "model.layers.0.self_attn.q_proj.weight":
+        "model-00001-of-00003.safetensors"
+}
+
+# Safetensors header of the corresponding shard (model-00001-of-00003.safetensors)
+tensor_in_shard = {
+    "model.layers.0.self_attn.q_proj.weight": {
+        "dtype": "BF16",
+        "shape": [4096, 2560],
+        "data_offsets": [953559552, 974531072],
+    }
+}
+```
+
+First locate the corresponding shard, then locate the tensor's dtype, shape, and byte range within the data section of that shard.
+
+
+The header length of Qwen3-4B's first shard is 20,000 bytes. Subtracting the two offsets for Layer 0 `q_proj` gives `20,971,520 bytes`, which equals `4096 × 2560 × 2`. `data_offsets` is relative to the start of the data section, so the file range is a half-open interval:
+
+```
+data_start = 8 + header_length
+file_range = [data_start + begin, data_start + end)
+           = [953579560, 974551080)
+```
+
+We can then read the corresponding data and load it into the GPU. The overall path is fairly simple.
+
+## Data Each GPU Needs to Load
+
+With a single GPU, no quantization, and no need for rearrangement, the dtype, shape, and element order in the file can usually be preserved as-is, so a simple implementation like the one above is sufficient.
+
+In real-world scenarios, however, we also need to consider different multi-GPU parallelism methods (TP, EP, and so on) and quantized weights.
+
+
+### TP=1: Copy the Entire Range
+
+```
+File: BF16[4096, 2560]
+    ↓ Entire-range H2D
+rank 0 GPU: BF16[4096, 2560]
+```
+
+This is the method described above.
+
+### TP=2 Column Shard: Extract Row by Row
+
+OpenInfer's Qwen3 TP uses this path for `o_proj` and `down_proj`. Take `o_proj` as an example:
+
+```
+File: o_proj BF16[2560, 4096]
+    ├─ cols [0, 2048) in each row    → rank 0 GPU: BF16[2560, 2048]
+    └─ cols [2048, 4096) in each row → rank 1 GPU: BF16[2560, 2048]
+```
+
+`o_proj` is stored contiguously by row in the file, and each rank needs only half of the columns in each row—the required bytes are not one contiguous range, but 2,560 discontinuous small ranges scattered throughout the tensor range.
+
+Therefore, loading a column shard is a row-by-row gather: copy the required columns from each row into a staging buffer, and perform asynchronous H2D only after a block is full, instead of doing one direct contiguous copy.
+
+### Fused Projection: Contiguous GPU Weight Layout
+
+In the Qwen3-4B architecture, the Q, K, and V projections use the same input `x`.
+Safetensors stores `Wq`, `Wk`, and `Wv` separately; the loader can concatenate them vertically into a contiguous `Wqkv`:
+
+```
+Wq
+Wk  → Wqkv
+Wv
+
+Wqkv × x → [q; k; v]
+```
+
+The mathematical relationship is `[Wq; Wk; Wv] × x = [q; k; v]`, so three GEMMs can be combined into one GEMM, which may provide better benefits.
+
+### Quantization: GLM-5.2 FP8 as an Example
+
+FP8 is an 8-bit floating-point format (such as E4M3), so each weight element occupies only 1 byte. During quantization, first determine the scaling factor **scale**, then multiply the original weight $w$ by the scale and convert it to an FP8 value $q$:
+
+$$
+q = \text{FP8}(w \times \text{scale}), \quad \text{approximate weight} = q \times \frac{1}{\text{scale}}
+$$
+
+Recovery requires multiplication by $1/\text{scale}$, so the checkpoint directly stores this reciprocal (that is, `weight_scale_inv`), requiring only one multiplication during inference.
+
+If the entire matrix shares one scale, small weights are compressed into an extremely narrow encoding range, causing a severe loss of precision.
+
+A block strategy is therefore generally used: divide the weight matrix into small blocks and calculate the scale independently for each block, so regions with different magnitudes use their own scaling factors.
+
+In GLM-5.2 FP8's routed experts, `gate_proj` stores the quantized result:
+
+```
+gate_proj.weight           F8_E4M3 [2048, 6144]
+gate_proj.weight_scale_inv F32      [16, 48]
+```
+
+`weight` is the FP8-quantized weight, and `weight_scale_inv` stores $1/\text{scale}$ for each block (the shape `[16, 48]` means it is divided into 16×48 `128 × 128` blocks). During inference, recovery requires only `weight × weight_scale_inv`; no dequantization is performed during loading.
+
+### EP: Load Only the Experts Assigned to the Current GPU
+
+Again using GLM-5.2 as an example: it has 256 experts. With EP8, eight GPUs read the same global checkpoint, but each selects only 32 expert IDs:
+
+```
+GPU 0: experts [0, 32)
+GPU 1: experts [32, 64)
+...
+GPU 7: experts [224, 256)
+```
+
+
+## How to Optimize Weight-Loading Time
+
+We explained the logic that weight loading needs to handle above. It amounts to reading from disk, possibly processing some data selectively, allocating a GPU buffer, and copying the data from Host to Device.
+
+How does OpenInfer optimize the time spent in this stage?
+
+To break down the costs of different transfer paths, we compare three methods in an independent microbenchmark:
+
+
+| Method | Data path | Advantage | Main cost |
+| --- | --- | --- | --- |
+| Pageable mmap (experimental baseline) | page-cache-backed pages → H2D → GPU | Direct implementation, no explicit pinned lifecycle | Cannot control the internal process for overlap |
+| Double pinned staging | mmap → multithreaded CPU copy → 2×64 MiB pinned → async H2D | CPU fill overlaps with DMA; fixed 128 MiB pinned footprint | One additional CPU copy |
+| Full registered mmap | register the entire mmap range → direct H2D → unregister | Fast pure DMA phase; no staging copy during H2D | register/unregister grows with the number of pages and is platform-sensitive |
+
+These three are comparison paths in the microbenchmark, not OpenInfer Qwen3 runtime options; OpenInfer Qwen3 currently uses double pinned staging.
+
+The data comes from a hot-page-cache microbenchmark that reads real model safetensors on real hardware (initialization paths such as CUDA context setup are the same for all three paths and are excluded consistently).
+
+## End-to-End Results for the Three Methods
+
+Reading 8 GiB (already entirely in the page cache):
+
+| Path | H200 total time | RTX 5090 total time |
+| --- | --- | --- |
+| Pageable mmap | 989.8 ms | 1071.6 ms |
+| <b>Double pinned staging</b> | <b>267.7 ms</b> | <b>306.5 ms</b> |
+| Full registered mmap | 515.3 ms | 3739.3 ms |
+
+
+Double staging uses two 64 MiB pinned buffers for double buffering: at any given time, one is filled by four CPU threads while the contents of the other are transferred to the GPU by asynchronous DMA on a CUDA stream; they swap as soon as the fill is complete.
+
+There is only one synchronization point—before reusing a buffer, wait for the CUDA event from its previous transfer to complete; otherwise, the CPU and DMA do not wait for each other.
+
+<StagingPipeline />
+
+At 8 GiB, cumulative CPU fill on the RTX 5090 / H200 is 247.5 / 217.6 ms, loop wall is 249.3 / 219.6 ms, and slot wait is only 0.08 / 0.21 ms. Using the companion pinned-source H2D phase to estimate busy time, about 152–155 ms of DMA work is hidden by CPU materialization.
+
+This path fixes the pinned footprint at 128 MiB. The remaining costs are mainly the CPU copy from mapped pages to staging slots and about 48–57 ms of pinned allocation / release.
+
+## Lifecycle Cost of Registered mmap
+
+Compared with ordinary mmap, registered mmap eliminates the staging CPU copy, allowing DMA to read registered mmap pages directly for the H2D transfer.
+
+After registration, pure H2D for 8 GiB takes 152.2 / 157.7 ms on the RTX 5090 / H200 respectively, about 51–53 GiB/s.
+
+Registration itself has a cost, however. After including the registration cost, performance does not improve:
+
+| Hardware | Register | H2D | Unregister | Total time |
+| --- | --- | --- | --- | --- |
+| H200 | 282.8 ms | 157.7 ms | 75.0 ms | 515.3 ms |
+| RTX 5090 | 3457.7 ms | 152.2 ms | 129.6 ms | 3739.3 ms |
+
+On the RTX 5090, registration is approximately linear over the tested size range, at about 432 ms/GiB.
+
+Registration is not limited to this one method, so we tested four registered variants:
+
+| 8 GiB registered variant | H200 total time | RTX 5090 total time |
+| --- | --- | --- |
+| Fresh-PTE full register | 733.5 ms | 3766.5 ms |
+| 8-thread read-touch + full | 714.9 ms | 3827.5 ms |
+| 8-way concurrent register | 721.5 ms | 3817.4 ms |
+| 1 GiB shard pipeline | 563.2 ms | 3679.8 ms |
+
+This method provides a benefit in only one case: at 1 GiB on the H200, full registration takes 63.5 ms while staging takes 75.2 ms. Whether staging or registration is better therefore depends on both the platform and the size.
+
+In most tested cases, however, staging is the better one, so OpenInfer currently uses staging.
+
+### Deeper Pipeline, Fewer Bubbles → Better Performance?
+
+In the current two-slot design, four CPU threads fill one logical slot together.
+
+A natural follow-up is to give each worker its own slot and deepen the ring to five entries.
+
+In tests on an 8 GiB contiguous range on the H200, the five-slot ring increases pipeline throughput from 32.4 to 34.4 GiB/s, an improvement of 6.2%; GPU bubbles decrease from 37.1% to 33.2%.
+
+The overall end-to-end time moves in the opposite direction:
+
+| Final interleaved H200 batch | Setup | Pipeline | Free | Total time |
+| --- | --- | --- | --- | --- |
+| <b>Current 2-slot</b> | 38.2 ms | 247.2 ms | 11.6 ms | <b>297.0 ms</b> |
+| Eager 5-slot ring | 95.2 ms | 232.7 ms | 28.1 ms | 356.0 ms |
+| Best lazy ring, 2→5 | 38.3 ms | 279.7 ms | 28.1 ms | 346.0 ms |
+
+The pinned lifecycle of each 64 MiB slot is about 19.0 ms for allocation + 5.6 ms for free, so adding buffers itself also introduces overhead.
+
+Lazy growth overlaps the 57.1 ms background allocation window with active work, hiding only about 10–14 ms.
+While the ring is temporarily shallow, workers are still affected by backpressure; weight loading is fast in this case, so there is not much time to actually benefit from the pipeline depth.
+
+
+### End-to-End Startup: RTX 5090 TP1 (main e3f91120)
+
+After the optimizations above, with a warm page cache, how long does it take from the user entering the startup command until OpenInfer can provide an HTTP service? The table below shows the results of 10 runs.
+
+| Model | Checkpoint | HTTP-ready | Engine loaded | GPU-model loaded | Loader execute + final stream drain |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3-4B | 8.045 GB | 2.358 s (2.326–2.434) | 2.263 s | 563 ms | 408 ms |
+| Qwen3-8B | 16.382 GB | 3.366 s (3.348–3.372) | 3.270 s | 986 ms | 812 ms |
+
+For comparison, with vLLM 0.26.0 on the same 8× RTX 5090 host, single-GPU TP1, and a warm cache, each model was measured in three new processes after two warm-up runs (default compile + FULL/PIECEWISE CUDA Graph); 6/6 reached /health:
+
+| Model | Weight loading, median (min–max) | Model loading, median (min–max) | HTTP-ready, median (min–max) |
+| --- | --- | --- | --- |
+| Qwen3-4B | 1.27 s (1.27–1.28) | 2.245 s (2.241–2.245) | 51.397 s (51.389–51.658) |
+| Qwen3-8B | 2.40 s (2.40–2.40) | 3.371 s (3.369–3.372) | 53.044 s (52.899–54.061) |
+
+
+
+
+### End-to-End Startup: GLM-5.2-FP8, 4× GB300 ep4 (main e3f91120)
+
+```bash
+ <openinfer-release-binary> \
+    --model-path <GLM-5.2-FP8> \
+    --moe-topo ep4 \
+    --glm52-native-mtp \
+    --glm52-weight-staging \
+    --port 8000
+```
+
+
+| Stage | Median (min–max) |
+| --- | --- |
+| Rank worker startup | 1.70 s (1.70–1.72) |
+| Weight loading | 16.79 s (16.71–17.92) |
+| Other engine initialization | 6.64 s (6.64–6.71) |
+| Engine ready | 25.15 s (25.05–26.33) |
+| HTTP ready | 25.73 s (25.72–26.73) |
+
+For comparison, the same checkpoint was started warm under vLLM (three runs each):
+
+```bash
+vllm/vllm-openai:v0.26.0 \
+    /model \
+    --port 18082 \
+    --served-model-name glm52 \
+    --tensor-parallel-size 1 \
+    --data-parallel-size 4 \
+    --data-parallel-size-local 4 \
+    --enable-expert-parallel \
+    --enable-ep-weight-filter \
+    --gpu-memory-utilization 0.95 \
+    --kv-cache-dtype fp8_e4m3 \
+    --model-loader-extra-config \
+    '{"enable_multithread_load":true,"num_threads":8}'
+```
+
+| Configuration | Weight load, median | HTTP ready, fastest | HTTP ready, median |
+| --- | --- | --- | --- |
+| Single thread | 122.08 s | 298.69 s | 300.76 s |
+| 8 threads | 53.51 s | 230.64 s | **240.67 s** |
+
+Note: Multiple startups ensure that vLLM's compile cache is warm.
+
+As EP grows afterward, for example to EP32, each rank needs to load fewer weights, and we should be able to complete engine startup in about 10 seconds.
+
+But is this the limit of weight loading? Not yet. In the future, we may integrate a solution that keeps data resident in cluster memory and injects it directly into the GPU through RDMA, without any copies. For a model such as GLM-5.2 FP8, weight loading would take only 2 seconds. Stay tuned!
+
+## What Accounts for the Rest of the Startup Time?
+
+The Qwen3 series starts in 2–3 seconds, while weight loading takes less than 1 second. What happens during the remaining time? Can we go even faster?
+
+On a 5070 Ti with Qwen3-4B, a warm page cache, and no profiler, the measured process startup → HTTP service availability is **4.81 s** (the engine portion is 4.66 s, with ±0.2 s variation between runs). Our profile breaks it down as follows:
+
+| # | Stage | Time | Share |
+| --- | --- | --- | --- |
+| 1 | Tokenizer loading + weight shard mmap/prefetch (3 shards, 8.0 GB) | ~0.44 s | 9% |
+| 2 | Weight upload to GPU (398 uploads; includes two-slot pinned staging and a direct transfer path for Vector types, about 6.7 GB/s overall) | ~1.24 s | 26% |
+| 3 | cuBLASLt decode GEMM tuning (8 N≤32 buckets × 6 projections, 7,400+ GEMM kernel executions) | ~2.3 s | 48% |
+| 4 | CUDA module loading + pure CPU initialization (57 cuLibraryLoadData calls account for 187 ms) | ~0.5 s | 10% |
+| 5 | Memory profiling (dummy decode + maximum-shape unified forward + sampling, recording the peak to determine the KV budget) | ~0.15 s | 3% |
+| 6 | KV pool allocation + scheduler + frontend bridge + HTTP bind | ~0.18 s | 4% |
