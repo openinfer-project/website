@@ -1,14 +1,15 @@
 ---
 /**
- * StagingHero — 权重加载博客开头的速览动画（像素风）。
+ * StagingHero — overview animation at the beginning of the weight-loading blog post (pixel style).
  *
- * shard → 2×64 MiB pinned slots → GPU 的迷你数据路径，
- * GPU bar 为 16 个像素 cell，按 chunk 交替染 A/B 色；
- * 计数器对应 H200 上 8 GiB 连续区间的实测端到端 267.7 ms。
- * 无 JS / prefers-reduced-motion 时渲染最终静态帧。
+ * Mini data path: shard → 2×64 MiB pinned slots → GPU.
+ * The GPU bar has 16 pixel cells, colored A/B alternately by chunk.
+ * The counter corresponds to the measured end-to-end time of 267.7 ms
+ * for an 8 GiB contiguous range on H200.
+ * Renders the final static frame without JS or with prefers-reduced-motion.
  */
 const ariaLabel =
-	'全文速览：从 safetensors shard 取出当前 GPU 需要的 bytes，经两块 64 MiB pinned slot 流水进入显存。计数器对应 H200 上 8 GiB 连续区间的实测端到端 267.7 ms（hot-page-cache microbenchmark，非完整模型启动；见第 4 节）。';
+	'Article overview: bytes needed by the current GPU are taken from a safetensors shard and pipelined into GPU memory through two 64 MiB pinned slots. The counter corresponds to the measured end-to-end time of 267.7 ms for an 8 GiB contiguous range on H200 (hot-page-cache microbenchmark, not a full model startup; see Section 4).';
 ---
 
 <figure class="sh" data-sh role="img" aria-label={ariaLabel}>
@@ -39,7 +40,7 @@ const ariaLabel =
 			</span>
 		</div>
 	</div>
-	<figcaption>double pinned staging · 8 GiB → 267.7 ms（H200）</figcaption>
+	<figcaption>double pinned staging · 8 GiB → 267.7 ms (H200)</figcaption>
 </figure>
 
 <style>
@@ -217,7 +218,7 @@ const ariaLabel =
 		color: var(--sl-color-gray-3);
 	}
 
-	/* 动画态：默认静态帧 = slot 满、cell 全亮、计数器终值 */
+	/* Animated state: default static frame = full slots, all cells lit, counter at final value */
 	.sh-anim .sh-slot i {
 		width: 0;
 	}
@@ -263,8 +264,8 @@ const ariaLabel =
 
 			const GIB = 8;
 			const TOTAL_MS = 267.7;
-			const PLAY = 4200; // 0 → 267.7 ms 的播放时长
-			const HOLD = 1400; // 定格满帧
+			const PLAY = 4200; // Playback duration from 0 → 267.7 ms
+			const HOLD = 1400; // Hold the full frame
 			const CYCLE = PLAY + HOLD;
 			const CHUNKS = 8;
 
@@ -283,8 +284,8 @@ const ariaLabel =
 				const el = (now - t0) % CYCLE;
 				const p = Math.min(el / PLAY, 1);
 
-				// slot 脉冲：8 个 chunk 交替 fill A/B，宽度按 8 档量化保持像素感；
-				// 未轮到的一方保持满槽（正在 DMA）
+				// Slot pulse: 8 chunks alternately fill A/B; width is quantized into 8 levels
+				// to preserve the pixel effect. The other slot stays full (DMA in progress).
 				const phase = (el / PLAY) * CHUNKS;
 				if (p < 1) {
 					const idx = Math.floor(phase);
@@ -296,7 +297,7 @@ const ariaLabel =
 					slotB.style.width = '100%';
 				}
 
-				// GPU bar：16 个 cell 离散点亮，颜色随 chunk 奇偶交替 A/B
+				// GPU bar: 16 cells light up discretely, alternating A/B by chunk parity
 				const n = Math.min(Math.floor(p * cells.length + 1e-6), cells.length);
 				cells.forEach((c, i) => c.classList.toggle('on', i < n));
 

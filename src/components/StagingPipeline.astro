@@ -1,11 +1,11 @@
 ---
 /**
- * StagingPipeline — 权重加载博客的 two-slot pinned staging 动画（第 4 节）。
+ * StagingPipeline — two-slot pinned staging animation for the weight-loading blog post (Section 4).
  *
- * 两块 64 MiB pinned slot 的 producer/consumer 循环，fill : H2D 时长按
- * 32.6 : 51.5 GiB/s 的反比绘制，滚入视口后循环播放。
+ * Producer/consumer loop for two 64 MiB pinned slots. Fill : H2D durations
+ * are drawn in inverse proportion to 32.6 : 51.5 GiB/s and loop when scrolled into view.
  *
- * 无 JS / prefers-reduced-motion 时渲染最终静态帧。
+ * Renders the final static frame without JS or with prefers-reduced-motion.
  */
 interface Block {
 	start: number;
@@ -148,7 +148,7 @@ const caption =
 	.sp-body {
 		position: relative;
 	}
-	/* 抵消 Starlight markdown 的 flow margin，避免绝对定位块高度被吃掉 */
+	/* Offset Starlight Markdown's flow margin so it does not consume the height of absolute-positioned blocks */
 	.sp-body,
 	.sp-row,
 	.sp-lane,
@@ -246,7 +246,7 @@ const caption =
 		pointer-events: none;
 	}
 
-	/* 动画态（JS 加 .sp-anim）：默认静态帧 = 全部填满 + 标签可见 */
+	/* Animated state (JS adds .sp-anim): default static frame = all filled + labels visible */
 	.sp-anim .sp-block i {
 		width: 0;
 	}
@@ -269,7 +269,7 @@ const caption =
 		color: var(--sl-color-gray-3);
 	}
 
-	/* slot 状态条 */
+	/* Slot status bar */
 	.sp-slots {
 		display: flex;
 		align-items: center;
@@ -306,7 +306,7 @@ const caption =
 		color: var(--sl-color-gray-3);
 	}
 
-	/* GPU 道空隙 = DMA bubble */
+	/* Gaps in the GPU lane = DMA bubbles */
 	.sp-block.bubble {
 		border: 1px dashed var(--sl-color-gray-4);
 		background: transparent;
@@ -322,7 +322,7 @@ const caption =
 		display: none;
 	}
 
-	/* 进行中的块：传送带条纹 + 描边，两条道同时亮起即重叠 */
+	/* Active blocks: conveyor stripes + outline; both lanes lit at once means overlap */
 	.sp-anim .sp-block.active {
 		box-shadow: 0 0 0 1px var(--sl-color-gray-1);
 		z-index: 1;
