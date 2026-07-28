@@ -172,11 +172,13 @@ Wqkv × x → [q; k; v]
 
 ### 量化：以 GLM-5.2 FP8 为例
 
-FP8 是一种 8 位浮点数格式（如 E4M3），每个权重元素仅占 1 字节。量化时，先确定缩放因子 **scale**，再将原权重 $w$ 除以 scale 后取 FP8 值得到 $q$：
+FP8 是一种 8 位浮点数格式（如 E4M3），每个权重元素仅占 1 字节。量化时，先确定缩放因子 **scale**，将原权重 $w$ 乘以 scale 后取 FP8 值得到 $q$：
 
 $$
-q = \text{FP8}(w / \text{scale}), \quad \text{近似权重} = q \times \text{scale}
+q = \text{FP8}(w \times \text{scale}), \quad \text{近似权重} = q \times \frac{1}{\text{scale}}
 $$
+
+还原时需要乘 $1/\text{scale}$，因此 checkpoint 直接把这个倒数存下来（即 `weight_scale_inv`），推理时只需一次乘法。
 
 如果整个矩阵共用一个 scale，小权重会被压缩到极窄的编码区间，精度严重损失。
 
@@ -189,7 +191,7 @@ gate_proj.weight           F8_E4M3 [2048, 6144]
 gate_proj.weight_scale_inv F32      [16, 48]
 ```
 
-`weight` 是 FP8 量化权重，`weight_scale_inv` 存的是每块 **scale 的倒数**（形状 `[16, 48]` 表示分成了 16×48 个 `128 × 128` block）。推理时只需 `weight × weight_scale_inv` 即可还原，不在加载过程中进行解量化操作。
+`weight` 是 FP8 量化权重，`weight_scale_inv` 存的就是每块的 $1/\text{scale}$（形状 `[16, 48]` 表示分成了 16×48 个 `128 × 128` block）。推理时只需 `weight × weight_scale_inv` 即可还原，不在加载过程中进行解量化操作。
 
 ### EP：只加载当前 GPU 负责的 experts
 
