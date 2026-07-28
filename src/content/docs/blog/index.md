@@ -7,6 +7,7 @@ description: Release notes, benchmarks, runtime design notes, and model bring-up
 
 | Date | Post | Summary |
 | --- | --- | --- |
+| 2026-07-28 | [OpenInfer 权重加载：从 Safetensors 到 GPU 的完整数据路径](/blog/weight-loading/) | Safetensors 索引寻址、TP/FP8/EP 切分、two-slot pinned staging，以及与 vLLM 的启动时间对比。 |
 | 2026-07-17 | [Speculative Decoding](/blog/speculative-decoding/) | From output entropy and verification correctness to EAGLE draft models and dynamic verify length. |
 | 2026-07-10 | [See Qwen3 Decode as a CUDA Graph](/blog/cuda-graph-export/) | One flag exports a detailed DOT for LLMs and a folded high-resolution PNG for people. |
 | 2026-06-20 | [Co-locating Prefill and Decode on One GPU: Green Contexts for Higher Throughput](/blog/green-ctx/) | CUDA Green Contexts, SM partitioning, prefill/decode overlap, and OpenInfer benchmark results. |

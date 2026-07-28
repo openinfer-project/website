@@ -30,6 +30,7 @@ src/
   content/docs/       # All doc pages (Markdown / MDX)
   styles/custom.css   # Site-wide theme overrides (light + dark)
   assets/             # Logo and other bundled assets
+  components/         # Reusable Astro components (e.g. blog animations)
   content.config.ts   # Starlight content collection
 public/               # Static files served as-is (images, favicon)
 tests/
@@ -74,6 +75,7 @@ The site uses `trailingSlash: 'always'`. Internal links and sidebar entries must
 - **Fonts:** Roboto + Roboto Mono (loaded in `astro.config.mjs` `head`).
 - **Code blocks:** plain by default (no terminal frame). The `openinfer-plain-code` Expressive Code plugin sets `frame: 'none'` unless `frame=` is explicitly set in a fence meta string.
 - **Theme tweaks** belong in `src/styles/custom.css`. Avoid one-off inline styles in content files.
+- **Blog animations** live in `src/components/` as Astro components embedded from MDX. Keep them dependency-free (scoped CSS + vanilla JS, no animation/chart libraries), trigger on scroll into view, and render a final static frame when `prefers-reduced-motion` is set or JS is unavailable.
 - **Logo:** configured as a string path in `astro.config.mjs` (`logo: { src: './src/assets/logo.png', ... }`). Do not pass an imported `ImageMetadata` object.
 
 ## Build and preview

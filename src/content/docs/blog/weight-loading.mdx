@@ -1,0 +1,372 @@
+---
+title: "OpenInfer 权重加载：从 Safetensors 到 GPU 的完整数据路径"
+description: "解析 OpenInfer 如何从 Safetensors 索引定位权重、处理 TP/FP8/EP 切分，并用 two-slot pinned staging 重叠 CPU 准备与异步 H2D——以及为什么更快的局部阶段没有带来更快的总时间。"
+---
+
+import StagingPipeline from '../../../components/StagingPipeline.astro';
+
+作者：[FeathBow](https://github.com/FeathBow)、[Jinyang Su](https://github.com/xiaguan)
+
+**OpenInfer 启动 Qwen3-4B 服务，仅需 2.36 秒。**<br />**即便是约 700 GiB 级别的 GLM-5.2-FP8，也只需 25.73 秒。**
+
+更快的引擎启动速度意味着什么？
+1. 推理研究者更快的开发反馈循环：修改 kernel、调度策略后，更快得到 e2e 结果。
+2. 更低的扩缩容冷启动延迟：流量上涨时，几秒钟拉起新副本承接流量，包括 Serverless Inference。
+3. 让调度器可以进行更细粒度的资源重组：P/D 角色转换时，不用再担心转换过程中可能数十分钟的启动时间。
+
+> 本文先解释 OpenInfer 是如何加载权重，以及如何一步步优化权重加载的。再分析一组独立的传输实验。
+
+## TL;DR
+
+- **权重怎样从 Safetensors 进入 GPU**
+- **TP、FP8、EP 如何改变加载过程**
+- **OpenInfer 如何优化传输路径**
+
+
+
+## Safetensors 如何布局权重
+
+从 Hugging Face 下载 `Qwen/Qwen3-4B` 的权重后，本地目录包含模型配置、tokenizer、权重索引和三个 safetensors shard：
+
+```
+Qwen3-4B/
+├── config.json                         # 36 layers、hidden=2560、BF16…
+├── generation_config.json
+├── tokenizer.json
+├── tokenizer_config.json
+├── vocab.json
+├── merges.txt
+├── model.safetensors.index.json        # tensor name → shard file
+├── model-00001-of-00003.safetensors    # 3,957,900,840 bytes ≈ 3.69 GiB
+├── model-00002-of-00003.safetensors    # 3,987,450,520 bytes ≈ 3.71 GiB
+└── model-00003-of-00003.safetensors    #    99,630,640 bytes ≈ 95 MiB
+```
+
+这些文件分为三类：
+
+- `config.json` 记录模型结构：层数、hidden size、模型家族、上下文长度等。引擎读取这些字段校验权重 shape，并构建对应的执行布局。
+- tokenizer 文件负责文本与 token id 的转换。
+- `model-*.safetensors` 保存 tensor payload，也就是实际的权重部分；index 把 tensor name 映射到 shard。
+
+我们以 Qwen3-4B 的 `model.safetensors.index.json` 为例子，它有 `metadata` 与 `weight_map` 两个顶层字段，它大致是：
+
+```json
+{
+  "metadata": {
+    "total_size": 8044936192
+  },
+  "weight_map": {
+    "model.embed_tokens.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.input_layernorm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.down_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.gate_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.mlp.up_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.post_attention_layernorm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.k_norm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.k_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.o_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.q_norm.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.q_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.0.self_attn.v_proj.weight": "model-00001-of-00003.safetensors",
+    "model.layers.16.self_attn.q_proj.weight": "model-00002-of-00003.safetensors",
+    "model.layers.35.self_attn.v_proj.weight": "model-00002-of-00003.safetensors",
+    "model.layers.35.input_layernorm.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.mlp.down_proj.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.mlp.up_proj.weight": "model-00003-of-00003.safetensors",
+    "model.layers.35.post_attention_layernorm.weight": "model-00003-of-00003.safetensors",
+    "model.norm.weight": "model-00003-of-00003.safetensors"
+  }
+}
+```
+
+完整 index 共 398 个 entries：1 个 embedding、36 层 × 每层 11 个 tensors、1 个最终 norm，即 `1 + 36 × 11 + 1 = 398`。`metadata.total_size = 8,044,936,192` 是所有 tensor payload 的总大小，约 7.49 GiB。
+
+一个 shard 的物理结构是：
+
+```
+[8-byte little-endian header length]
+[JSON header: tensor name → dtype / shape / data_offsets]
+[contiguous raw tensor payload bytes]
+```
+
+具体查找一个权重 tensor 的位置也很简单，tensor name → shard → byte range
+
+```python
+# model.safetensors.index.json
+tensor_to_shard = {
+    "model.layers.0.self_attn.q_proj.weight":
+        "model-00001-of-00003.safetensors"
+}
+
+# 对应 shard(model-00001-of-00003.safetensors) 的 safetensors header
+tensor_in_shard = {
+    "model.layers.0.self_attn.q_proj.weight": {
+        "dtype": "BF16",
+        "shape": [4096, 2560],
+        "data_offsets": [953559552, 974531072],
+    }
+}
+```
+
+第一次找到对应的 shard，第二次在 shard 中找到对应 tensor 的 dtype、shape 和 data section 内的 byte range。
+
+
+Qwen3-4B 第一个 shard 的 header length 是 20,000 bytes。所以 Layer 0 `q_proj` 的两个 offsets 相减得到 `20,971,520 bytes`，等于 `4096 × 2560 × 2`。`data_offsets` 相对于 data section 起点，所以文件区间是半开区间：
+
+```
+data_start = 8 + header_length
+file_range = [data_start + begin, data_start + end)
+           = [953579560, 974551080)
+```
+
+然后我们就可以读取相应的数据，加载到 GPU 中了，整体路径较为简单。
+
+## 每张 GPU 需要加载的数据
+
+单卡、未量化且无需重排时，文件中的 dtype、shape 和元素顺序通常可以原样保留，可以像上文那样简单实现足以。
+
+但真实场景下，我们还要考虑多卡的不同并行方式（TP，EP 等），量化权重等。
+
+
+### TP=1：整段复制
+
+```
+文件：BF16[4096, 2560]
+    ↓ 整段 H2D
+rank 0 GPU：BF16[4096, 2560]
+```
+
+也就是前文的方式。
+
+### TP=2 column shard：逐行抽取
+
+OpenInfer 的 Qwen3 TP 对 `o_proj` 和 `down_proj` 使用这条路径。以 `o_proj` 为例：
+
+```
+文件：o_proj BF16[2560, 4096]
+    ├─ 每行 cols [0, 2048)    → rank 0 GPU：BF16[2560, 2048]
+    └─ 每行 cols [2048, 4096) → rank 1 GPU：BF16[2560, 2048]
+```
+
+`o_proj` 在文件里按行连续存储，每个 rank 只要每行的一半列——需要的字节不是一整段，而是 2560 个断续的小段，散落在整个 tensor 区间里。
+
+所以 column shard 的加载是逐行 gather：把每行需要的列拷进 staging buffer，凑满一块才进行异步 H2D，而不是直接一次连续 copy。
+
+### fused projection：GPU 权重连续布局
+
+对于 Qwen3-4B 的架构来说，Q、K、V projection 使用同一个输入 `x`。
+Safetensors 分别保存 `Wq`、`Wk`、`Wv`；loader 可以把它们纵向拼成连续 `Wqkv`：
+
+```
+Wq
+Wk  → Wqkv
+Wv
+
+Wqkv × x → [q; k; v]
+```
+
+数学关系是 `[Wq; Wk; Wv] × x = [q; k; v]`，可以把三次 GEMM 拼接成一次 GEMM，可能可以获得更好的收益。
+
+### 量化：以 GLM-5.2 FP8 为例
+
+FP8 是一种 8 位浮点数格式（如 E4M3），每个权重元素仅占 1 字节。量化时，先确定缩放因子 **scale**，再将原权重 $w$ 除以 scale 后取 FP8 值得到 $q$：
+
+$$
+q = \text{FP8}(w / \text{scale}), \quad \text{近似权重} = q \times \text{scale}
+$$
+
+如果整个矩阵共用一个 scale，小权重会被压缩到极窄的编码区间，精度严重损失。
+
+所以一般来说采用分块（block）策略：把权重矩阵切分成小块，每块独立计算 scale，让不同量级区域用各自的缩放因子。
+
+GLM-5.2 FP8 的 routed expert 中 `gate_proj` 就保存了量化结果：
+
+```
+gate_proj.weight           F8_E4M3 [2048, 6144]
+gate_proj.weight_scale_inv F32      [16, 48]
+```
+
+`weight` 是 FP8 量化权重，`weight_scale_inv` 存的是每块 **scale 的倒数**（形状 `[16, 48]` 表示分成了 16×48 个 `128 × 128` block）。推理时只需 `weight × weight_scale_inv` 即可还原，不在加载过程中进行解量化操作。
+
+### EP：只加载当前 GPU 负责的 experts
+
+还是以 GLM-5.2 为例：它有 256 个 experts。EP8 时，8 张 GPU 读取同一份全局 checkpoint，但每张只选择 32 个 expert ids：
+
+```
+GPU 0：experts [0, 32)
+GPU 1：experts [32, 64)
+...
+GPU 7：experts [224, 256)
+```
+
+
+## 如何优化权重加载时间
+
+前面我们讲解了权重加载需要处理的逻辑，看下来无非是从磁盘读取，可能会选择性地处理一些，然后开辟 GPU buffer，Host to Device 拷贝过去。
+
+OpenInfer 是怎么优化这个阶段的耗时呢？
+
+我们比较三种方式：
+
+
+| 方案 | 数据路径 | 优势 | 主要成本 |
+| --- | --- | --- | --- |
+| Pageable mmap（默认） | page-cache-backed pages → H2D → GPU | 实现直接，无显式 pinned 生命周期 | 无法控制内部过程进行 overlap |
+| Double pinned staging | mmap → 多线程 CPU copy → 2×64 MiB pinned → async H2D | CPU fill 与 DMA 重叠；固定 128 MiB pinned footprint | 多一次 CPU copy |
+| Full registered mmap | 注册整段 mmap → direct H2D → 注销 | 纯 DMA phase 快，H2D 时无需 staging copy | register/unregister 随页数增长且平台敏感 |
+
+数据来自真实硬件读取真实模型 safetensors 的 hot-page-cache microbenchmark（CUDA context setup 等初始化路径对三条路径相同，统一排除）。
+
+## 三种方法的端到端结果
+
+读取 8 GiB（已经全部在 page cache 中）：
+
+| 路径 | H200 总时间 | RTX 5090 总时间 |
+| --- | --- | --- |
+| Pageable mmap | 989.8 ms | 1071.6 ms |
+| <b>Double pinned staging</b> | <b>267.7 ms</b> | <b>306.5 ms</b> |
+| Full registered mmap | 515.3 ms | 3739.3 ms |
+
+
+Double staging 用两块 64 MiB pinned buffer 做双缓冲：任意时刻一块由 4 个 CPU 线程填充，另一块的内容由 CUDA stream 异步 DMA 上卡，填满即交换。
+
+同步点只有一个——复用某块 buffer 前，等它上一次传输的 CUDA event 落地；除此之外 CPU 与 DMA 互不等待。
+
+<StagingPipeline />
+
+8 GiB 时，RTX 5090 / H200 的累计 CPU fill 是 247.5 / 217.6 ms，loop wall 是 249.3 / 219.6 ms，slot wait 只有 0.08 / 0.21 ms。用 companion pinned-source H2D phase 估算 busy time，约 152–155 ms DMA work 被 CPU materialization 隐藏。
+
+这条路径把 pinned footprint 固定在 128 MiB。剩余成本主要是 mapped pages 到 staging slot 的 CPU copy，以及约 48–57 ms 的 pinned allocation / release。
+
+## Registered mmap 的生命周期成本
+
+Registered mmap 相比普通 mmap 去掉了 staging CPU copy，让 DMA 直接读取已注册的 mmap 页面完成 H2D 传输。
+
+注册完成后，8 GiB 的纯 H2D 在 RTX 5090 / H200 上分别是 152.2 / 157.7 ms，约 51–53 GiB/s。
+
+但是注册本身是有开销的，算上注册开销后，性能并没有变得更优：
+
+| 硬件 | Register | H2D | Unregister | 总时间 |
+| --- | --- | --- | --- | --- |
+| H200 | 282.8 ms | 157.7 ms | 75.0 ms | 515.3 ms |
+| RTX 5090 | 3457.7 ms | 152.2 ms | 129.6 ms | 3739.3 ms |
+
+RTX 5090 上，测试大小区间内 registration 近似线性，约 432 ms/GiB。
+
+注册不止这一种方式，我们继续测试四种 registered 变体：
+
+| 8 GiB registered 变体 | H200 总时间 | RTX 5090 总时间 |
+| --- | --- | --- |
+| Fresh-PTE full register | 733.5 ms | 3766.5 ms |
+| 8-thread read-touch + full | 714.9 ms | 3827.5 ms |
+| 8-way concurrent register | 721.5 ms | 3817.4 ms |
+| 1 GiB shard pipeline | 563.2 ms | 3679.8 ms |
+
+该方法，只在一个 case 下有收益：H200 1 GiB 时 full registration 是 63.5 ms，staging 是 75.2 ms，因此 staging 和注册谁更优，同时依赖平台与大小。
+
+但大部分测试案例下，staging 都是更好的那一个，所以目前 OpenInfer 选择了 staging。
+
+### 更深的流水线，更少的气泡 → 更好的性能？
+
+当前两 slot 设计由 4 个 CPU threads 一起填一个逻辑 slot。
+
+一个自然的后续方案是让 workers 各自拥有 slot，然后把 ring 加深到 5 个 entries。
+
+在 H200 的 8 GiB 连续区间上进行测试，5-slot ring 把 pipeline throughput 从 32.4 提高到 34.4 GiB/s，提升 6.2%；GPU bubble 从 37.1% 降到 33.2%。
+
+整体端到端时间朝相反方向变化：
+
+| Final interleaved H200 batch | Setup | Pipeline | Free | 总时间 |
+| --- | --- | --- | --- | --- |
+| <b>Current 2-slot</b> | 38.2 ms | 247.2 ms | 11.6 ms | <b>297.0 ms</b> |
+| Eager 5-slot ring | 95.2 ms | 232.7 ms | 28.1 ms | 356.5 ms |
+| Best lazy ring, 2→5 | 38.3 ms | 279.7 ms | 28.1 ms | 346.0 ms |
+
+每块 64 MiB slot 的 pinned lifecycle 约为 19.0 ms allocation + 5.6 ms free，增加 buffer 本身也会带来开销。
+
+Lazy growth 把 57.1 ms background allocation window 与 active work 重叠，只隐藏约 10–14 ms。
+Ring 暂时较浅时 workers 仍受背压（backpressure）影响；这个 case 下权重加载很快，真正能享受到流水线深度的时间不多。
+
+
+### 端到端启动：RTX 5090 TP1（main e3f91120）
+
+在做完上述优化后，在 page cache warm 的 case 下，从用户输入命令启动，到 OpenInfer 可以提供 HTTP 服务，耗时多久？下表是 10 次的结果
+
+| 模型 | Checkpoint | HTTP-ready | Engine loaded | GPU-model loaded | Loader execute + final stream drain |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3-4B | 8.045 GB | 2.358 s（2.326–2.434） | 2.263 s | 563 ms | 408 ms |
+| Qwen3-8B | 16.382 GB | 3.366 s（3.348–3.372） | 3.270 s | 986 ms | 812 ms |
+
+作为对比，vLLM 0.26.0、同一台 8× RTX 5090 主机、单卡 TP1、warm cache，每个模型 2 次预热后 3 次新进程测量（默认 compile + FULL/PIECEWISE CUDA Graph），6/6 到达 /health：
+
+| 模型 | 权重加载，中位数（min–max） | Model loading，中位数（min–max） | HTTP-ready，中位数（min–max） |
+| --- | --- | --- | --- |
+| Qwen3-4B | 1.27 s（1.27–1.28） | 2.245 s（2.241–2.245） | 51.397 s（51.389–51.658） |
+| Qwen3-8B | 2.40 s（2.40–2.40） | 3.371 s（3.369–3.372） | 53.044 s（52.899–54.061） |
+
+
+
+
+### 端到端启动：GLM-5.2-FP8，4× GB300 ep4（main e3f91120）
+
+```bash
+ <openinfer-release-binary> \
+    --model-path <GLM-5.2-FP8> \
+    --moe-topo ep4 \
+    --glm52-native-mtp \
+    --glm52-weight-staging \
+    --port 8000
+```
+
+
+| 阶段 | 中位数（min–max） |
+| --- | --- |
+| Rank worker 启动 | 1.70 s（1.70–1.72） |
+| 权重加载 | 16.79 s（16.71–17.92） |
+| 其他 Engine 初始化 | 6.64 s（6.64–6.71） |
+| Engine ready | 25.15 s（25.05–26.33） |
+| HTTP ready | 25.73 s（25.72–26.73） |
+
+作为对比，同一 checkpoint 在 vLLM 下 warm 启动（各 3 次）：
+
+```bash
+vllm/vllm-openai:v0.26.0 \
+    /model \
+    --port 18082 \
+    --served-model-name glm52 \
+    --tensor-parallel-size 1 \
+    --data-parallel-size 4 \
+    --data-parallel-size-local 4 \
+    --enable-expert-parallel \
+    --enable-ep-weight-filter \
+    --gpu-memory-utilization 0.95 \
+    --kv-cache-dtype fp8_e4m3 \
+    --model-loader-extra-config \
+    '{"enable_multithread_load":true,"num_threads":8}'
+```
+
+| 配置 | Weight load，中位数 | HTTP ready，最快 | HTTP ready，中位数 |
+| --- | --- | --- | --- |
+| 单线程 | 122.08 s | 298.69 s | 300.76 s |
+| 8 线程 | 53.51 s | 230.64 s | **240.67 s** |
+
+注：多次启动确保 vLLM 的 compile cache 已 warm。
+
+之后随着 EP 变大，比如 EP32，每个 rank 需要加载的权重更少，我们应该能在 10s 左右完成引擎启动。
+
+但这是权重加载的极限吗？还不是，未来我们也许会接入类似在集群内存中驻留的方案，通过 RDMA 直接将数据注入到 GPU 中，没有任何拷贝，对于 GLM-5.2 FP8 这样的模型，只需要 2s 即可完成权重加载。敬请期待！
+
+## 启动时间剩下的部分是什么？
+
+Qwen3 系列启动时间 2-3s，权重加载不到 1s，剩下的时间在做什么呢？我们还能更快吗？
+
+5070 Ti，Qwen3-4B，page cache 热、无 profiler 实测：进程启动 → HTTP 可服务 = **4.81 s**（engine 部分 4.66 s，run 间波动 ±0.2 s）。我们 profile 具体拆分：
+
+| # | 阶段 | 耗时 | 占比 |
+| --- | --- | --- | --- |
+| 1 | Tokenizer 加载 + 权重 shard mmap/prefetch（3 个 shard，8.0 GB） | ~0.44 s | 9% |
+| 2 | 权重上传 GPU（398 次 upload，two-slot pinned staging，≈6.7 GB/s） | ~1.24 s | 26% |
+| 3 | cuBLASLt decode GEMM 调优（8 个 N≤32 bucket × 6 个 projection，7400+ 次 GEMM kernel） | ~2.3 s | 48% |
+| 4 | CUDA module 加载 + 纯 CPU 初始化（57 次 cuLibraryLoadData 占 187 ms） | ~0.5 s | 10% |
+| 5 | Memory profiling（dummy decode + 最大形状 unified forward + sampling，记峰值定 KV budget） | ~0.15 s | 3% |
+| 6 | KV pool 分配 + scheduler + frontend bridge + HTTP bind | ~0.18 s | 4% |

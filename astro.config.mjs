@@ -117,6 +117,10 @@ export default defineConfig({
 					items: [
 						{ label: 'All Posts', link: '/blog/' },
 						{
+							label: '权重加载：从 Safetensors 到 GPU',
+							link: '/blog/weight-loading/',
+						},
+						{
 							label: 'Speculative Decoding',
 							link: '/blog/speculative-decoding/',
 						},
