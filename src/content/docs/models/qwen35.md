@@ -90,13 +90,6 @@ Poisson arrivals (`QPS n`) and fixed in-flight concurrency (`c=N`):
 Single-stream decode (`c=1`) runs at 12.2 ms/token — about 82 tok/s per
 request. All rows completed every request at the full 128-token output.
 
-The table stops at 4 in-flight requests: beyond that, concurrent
-1024-token prefills exceed the VRAM this 16 GB card has left after
-weights, and the affected requests fail with an allocation error — the
-Qwen3.5 scheduler does not yet bound concurrent prefill workspace the
-way it bounds KV. Higher-concurrency serving at this prompt shape needs
-a larger-VRAM GPU.
-
 ## Notes
 
 - Only the 8 full-attention layers keep a paged KV cache; the 24
