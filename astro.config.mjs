@@ -7,9 +7,6 @@ import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
 const SITE = 'https://open-infer.org';
-// TODO(seo): replace with a dedicated 1200x630 social card at /og-card.png.
-// favicon.png is square and renders small in link previews — fine as an interim.
-const OG_IMAGE = `${SITE}/favicon.png`;
 
 // https://astro.build/config
 export default defineConfig({
@@ -27,6 +24,7 @@ export default defineConfig({
 			title: 'openinfer',
 			logo: { src: './src/assets/logo.png', alt: 'openinfer' },
 			favicon: '/favicon.png',
+			routeMiddleware: './src/starlightRouteData.ts',
 			customCss: ['./src/styles/custom.css'],
 			expressiveCode: {
 				styleOverrides: {
@@ -52,9 +50,8 @@ export default defineConfig({
 					},
 				],
 			},
-			// Starlight already emits <title>, description, og:title/description/url,
-			// canonical, and twitter:card=summary_large_image. These fill the gaps:
-			// a social preview image and SoftwareApplication structured data.
+			// Page-specific social metadata and structured data are added in
+			// src/starlightRouteData.ts.
 			head: [
 				{
 					tag: 'link',
@@ -81,26 +78,6 @@ export default defineConfig({
 						rel: 'stylesheet',
 						href: 'https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css',
 					},
-				},
-				{ tag: 'meta', attrs: { property: 'og:image', content: OG_IMAGE } },
-				{ tag: 'meta', attrs: { name: 'twitter:image', content: OG_IMAGE } },
-				{
-					tag: 'script',
-					attrs: { type: 'application/ld+json' },
-					content: JSON.stringify({
-						'@context': 'https://schema.org',
-						'@type': 'SoftwareApplication',
-						name: 'openinfer',
-						description:
-							'Pure Rust + CUDA LLM inference engine — no PyTorch, OpenAI-compatible, serves Qwen3 to Kimi-K2.',
-						url: SITE,
-						applicationCategory: 'DeveloperApplication',
-						operatingSystem: 'Linux, Windows',
-						programmingLanguage: ['Rust', 'CUDA'],
-						codeRepository: 'https://github.com/openinfer-project/openinfer',
-						license: 'https://www.apache.org/licenses/LICENSE-2.0',
-						offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-					}),
 				},
 			],
 			social: [

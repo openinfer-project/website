@@ -5,6 +5,19 @@ import { describe, it } from 'node:test';
 import { DIST_PAGES, REDIRECTS, SITE_ROUTES } from './routes.mjs';
 
 const distDir = join(import.meta.dirname, '..', 'dist');
+const blogPosts = [
+	['blog/green-ctx/index.html', '2026-06-20'],
+	['blog/speculative-decoding/index.html', '2026-07-17'],
+	['blog/cuda-graph-export/index.html', '2026-07-10'],
+	['blog/openinfer-010/index.html', '2026-06-13'],
+	['blog/weight-loading/index.html', '2026-07-28'],
+];
+
+function getJsonLd(html) {
+	return [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs)].map(
+		([, json]) => JSON.parse(json),
+	);
+}
 
 describe('static build output', () => {
 	for (const page of DIST_PAGES) {
@@ -38,4 +51,28 @@ describe('static build output', () => {
 		assert.match(html, /Page not found/i);
 		assert.match(html, /starlight|openinfer/i);
 	});
+
+	it('homepage has website social metadata and SoftwareApplication structured data', () => {
+		const html = readFileSync(join(distDir, 'index.html'), 'utf8');
+		assert.match(html, /property="og:type" content="website"/);
+		assert.match(html, /property="og:image" content="https:\/\/open-infer\.org\/og-card\.png"/);
+		assert.deepEqual(
+			getJsonLd(html).map((entry) => entry['@type']),
+			['SoftwareApplication'],
+		);
+	});
+
+	for (const [page, publishedDate] of blogPosts) {
+		it(`${page} has article metadata and BlogPosting structured data`, () => {
+			const html = readFileSync(join(distDir, page), 'utf8');
+			assert.match(html, /property="og:type" content="article"/);
+			assert.match(html, new RegExp(`property="article:published_time" content="${publishedDate}`));
+
+			const jsonLd = getJsonLd(html);
+			assert.equal(jsonLd.length, 1);
+			assert.equal(jsonLd[0]['@type'], 'BlogPosting');
+			assert.match(jsonLd[0].mainEntityOfPage['@id'], /^https:\/\/open-infer\.org\/blog\//);
+			assert.ok(jsonLd[0].author.length > 0);
+		});
+	}
 });

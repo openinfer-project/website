@@ -1,13 +1,18 @@
 ---
 title: "Speculative Decoding"
 description: "From output entropy, verification correctness, and the EAGLE draft model to real benefits under different workloads, understand how speculative decoding accelerates large model generation."
+publishedDate: 2026-07-17
+authors:
+  - name: Jinyang Su
+    url: https://github.com/xiaguan
+seoImage: /blog/speculative-decoding/cover.webp
 ---
 
 We have already supported DFlash and DSpark speculative decoding on [OpenInfer](https://open-infer.org/models/qwen3-4b/#dspark-speculative-decoding) Qwen3-4B. In a ShareGPT test on a single RTX 5090, DSpark increased single-stream throughput from 170 to 381 token/s, and reduced TPOT from 5.83 ms to 2.96 ms. When concurrency is 4, throughput also increased from 576 to 1288 token/s, while keeping the output lossless.
 
 This article will break down speculative decoding itself: how a draft model is trained, why neither draft nor verify is better when it is longer, and how the latest DSpark does dynamic verify.
 
-![Speculative decoding cover](/blog/speculative-decoding/cover.png)
+![Speculative decoding cover](/blog/speculative-decoding/cover.webp)
 
 Large model decode is limited by memory bandwidth: for every output token, it has to read all weights from GPU memory once. A dense model with 8GB of weights and 800GB/s bandwidth takes 10ms to read once, so the single-request limit is 100 token/s. This upper bound has nothing to do with how many requests there are, request complexity, or whether the kernel is written well. Bandwidth utilization cannot exceed the physical limit, and one forward has to read this much data. To be faster, there is only one way: make one decode forward produce more than one token.
 
