@@ -6,6 +6,7 @@
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro build",
+    "generate:og-image": "node scripts/generate-og-card.mjs",
     "preview": "astro preview",
     "astro": "astro",
     "test": "npm run build && npm run test:static && npm run test:e2e",

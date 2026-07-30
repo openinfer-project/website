@@ -1,6 +1,11 @@
 ---
 title: "See Qwen3 Decode as a CUDA Graph"
 description: "Export OpenInfer's live Qwen3 decode CUDA Graph as a detailed DOT for LLMs and a folded high-resolution PNG for people."
+publishedDate: 2026-07-10
+authors:
+  - name: Jinyang Su
+    url: https://github.com/xiaguan
+seoImage: /blog/cuda-graph-export/qwen3_4b_decode.png
 ---
 
 OpenInfer can now [export the live rank-0, batch-1 SplitKv decode CUDA Graph](https://github.com/openinfer-project/openinfer/pull/640) at startup.
