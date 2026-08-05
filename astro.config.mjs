@@ -21,8 +21,8 @@ export default defineConfig({
 	integrations: [
 		sitemap(),
 		starlight({
-			title: 'openinfer',
-			logo: { src: './src/assets/logo.png', alt: 'openinfer' },
+			title: 'pegainfer',
+			logo: { src: './src/assets/logo.png', alt: 'pegainfer' },
 			favicon: '/favicon.png',
 			routeMiddleware: './src/starlightRouteData.ts',
 			customCss: ['./src/styles/custom.css'],
@@ -38,7 +38,7 @@ export default defineConfig({
 				},
 				plugins: [
 					{
-						name: 'openinfer-plain-code',
+						name: 'pegainfer-plain-code',
 						hooks: {
 							preprocessCode: ({ codeBlock }) => {
 								// uv-style: plain code blocks unless frame= is set explicitly
@@ -84,7 +84,7 @@ export default defineConfig({
 				{
 					icon: 'github',
 					label: 'GitHub',
-					href: 'https://github.com/openinfer-project/openinfer',
+					href: 'https://github.com/pegainfer-project/pegainfer',
 				},
 			],
 			sidebar: [
@@ -106,8 +106,8 @@ export default defineConfig({
 							link: '/blog/cuda-graph-export/',
 						},
 						{
-							label: 'OpenInfer 0.1.0: Production-Grade Rust Inference',
-							link: '/blog/openinfer-010/',
+							label: 'PegaInfer 0.1.0: Production-Grade Rust Inference',
+							link: '/blog/pegainfer-010/',
 						},
 						{
 							label: 'Co-locating Prefill and Decode',

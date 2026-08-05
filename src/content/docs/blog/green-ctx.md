@@ -170,11 +170,11 @@ After this optimization:
 | concurrent_normal | 16.892 ms | 32.39 | 25.54 | 76.65 |
 | concurrent_cs (`__ldcs` / `__stcs`) | 16.798 ms | 34.57 | 23.32 | 77.08 |
 
-## OpenInfer Adapts Green Context
+## PegaInfer Adapts Green Context
 
 When I mention Green Context, people often ask one question: if Decode gets 20% and Prefill gets 80% of the SMs, then if the system only has Prefill or only has Decode at some moment, isn't that wasting SMs? Even if Prefill and Decode keep arriving stably, it can only overlap one batch. Prefill may take hundreds of milliseconds, while Decode only takes tens of milliseconds. The gain may only be a few milliseconds, so it may not be necessary.
 
-OpenInfer's design is as follows. First, the SM split is static, for example P:D is 8:2, though different workloads and different hardware need different ratios. After the system starts, there are three streams:
+PegaInfer's design is as follows. First, the SM split is static, for example P:D is 8:2, though different workloads and different hardware need different ratios. After the system starts, there are three streams:
 
 1. Full-SM stream: a stream with all SMs, used for pure decode batches and prefill batches. This means that even if there is no mixed Prefill and Decode in the system, there is no performance loss.
 2. Prefill-SM stream split by Green Context: used specifically to carry prefill kernels.
@@ -190,11 +190,11 @@ The solution is also simple. The scheduler introduces two inflight batches. More
 
 When a scheduler loop observes that the event is complete, it lets the worker really trigger sync and then trigger sampling, handling the remaining work like a normal Prefill, such as committing KV blocks and submitting offloading tasks. If this request has finished Prefill, it enters the active queue, meaning the decode queue, and waits for scheduling.
 
-The most troublesome integration problem is that GPU memory management is asynchronous. Usually, on one stream, allocation -> kernel -> release all happen on one stream, so it is safe. But now, if the kernel runs on another stream, before launching it you need to sync the stream where the first allocation happened, otherwise Xid may happen. The release timing also matters. Of course, this may be because OpenInfer has not yet given a good stream switching solution. Overall, the most troublesome point in stream switching is memory. CPU RAII and GPU RAII have a direct gap. It seems that one big pain point of io_uring is also this lifetime problem. This topic deserves another blog: how to abstract GPU resources well in Rust. There are also several experts in the Rust language community doing this kind of thing. They started companies, so maybe they are waiting for NVIDIA to acquire them.
+The most troublesome integration problem is that GPU memory management is asynchronous. Usually, on one stream, allocation -> kernel -> release all happen on one stream, so it is safe. But now, if the kernel runs on another stream, before launching it you need to sync the stream where the first allocation happened, otherwise Xid may happen. The release timing also matters. Of course, this may be because PegaInfer has not yet given a good stream switching solution. Overall, the most troublesome point in stream switching is memory. CPU RAII and GPU RAII have a direct gap. It seems that one big pain point of io_uring is also this lifetime problem. This topic deserves another blog: how to abstract GPU resources well in Rust. There are also several experts in the Rust language community doing this kind of thing. They started companies, so maybe they are waiting for NVIDIA to acquire them.
 
 For pressure testing, we use `vllm-bench`, a Rust multi-turn conversation simulator that matches today's agent workload. The pressure test is split into two groups: heavy prefill, where the first turn is 2k and later turns are 512; and light prefill, where the first turn is 512 and later turns are 256. Output is 256 tokens in both cases, with concurrency 16.
 
-Under the heavy prefill workload, `off` in the figure is OpenInfer's default stream, `stream` is naive two streams, and `gc x%` means decode uses x% of SMs.
+Under the heavy prefill workload, `off` in the figure is PegaInfer's default stream, `stream` is naive two streams, and `gc x%` means decode uses x% of SMs.
 
 ![Qwen3 4B multiturn 2k/512 overall](/blog/green-ctx/qwen3_4b_multiturn_2k512_overall.png)
 
@@ -212,6 +212,6 @@ If heavy prefill is difficult to handle, we can still use the P/D disaggregation
 
 One interesting point is that after enabling Green Context, the 5090 often hits the power wall. I do not know whether commercial cards will be slightly better.
 
-As for how to do CPD, when I was writing OpenInfer, I already had an idea: a co-design of routing, engine, and KV cache as a trinity. Now I should be fairly familiar with the second half. The engine part still has some holes to fill, including speculative decoding and then inference modeling for large MoE.
+As for how to do CPD, when I was writing PegaInfer, I already had an idea: a co-design of routing, engine, and KV cache as a trinity. Now I should be fairly familiar with the second half. The engine part still has some holes to fill, including speculative decoding and then inference modeling for large MoE.
 
 The next article will be about speculative decoding. Actually, the draft already exists: DFlash. But I will write the blog next week.

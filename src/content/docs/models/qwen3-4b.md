@@ -1,16 +1,16 @@
 ---
 title: Qwen3-4B / 8B / 32B
-description: "Running Qwen3-4B, 8B, and 32B on openinfer: launch, serving performance, speculative decoding, and architecture notes."
+description: "Running Qwen3-4B, 8B, and 32B on pegainfer: launch, serving performance, speculative decoding, and architecture notes."
 ---
 
-Qwen3-4B is the default openinfer model line: pure Rust + CUDA, no Python at
+Qwen3-4B is the default pegainfer model line: pure Rust + CUDA, no Python at
 build time or runtime, full-attention GQA, paged KV cache, prefix caching,
 CUDA Graph decode, optional pegaflow KV offload, and DSpark speculative
 decoding.
 
 ## Launch
 
-From the openinfer workspace root:
+From the pegainfer workspace root:
 
 ```bash
 huggingface-cli download Qwen/Qwen3-4B --local-dir models/Qwen3-4B
@@ -19,11 +19,11 @@ export CUDA_HOME=/usr/local/cuda
 cargo run --release
 ```
 
-The default model path is `models/Qwen3-4B`, and `openinfer-server` is the
+The default model path is `models/Qwen3-4B`, and `pegainfer-server` is the
 workspace default member. To pass an explicit model path or port:
 
 ```bash
-cargo run --release -p openinfer-server -- \
+cargo run --release -p pegainfer-server -- \
   --model-path models/Qwen3-4B \
   --port 8000
 ```
@@ -94,14 +94,14 @@ Tool calling goes through `/v1/chat/completions` with a `tools` array; a
 ## Performance
 
 Measured on **1x RTX 5090 32GB**, driver 590.48.01, CUDA 13.1 build,
-Qwen3-4B BF16 weights, TP1. openinfer main `70888b2`, vLLM 0.24.0, same
+Qwen3-4B BF16 weights, TP1. pegainfer main `70888b2`, vLLM 0.24.0, same
 `vllm bench serve` client, same host, same GPU, prefix cache on, seed 42,
 input 1024 / output 128 for the QPS sweep. Reproducible via
 `tools/bench/run_serving_bench.sh` in the repo.
 
 ### Footprint
 
-| Metric | openinfer | vLLM 0.24.0 |
+| Metric | pegainfer | vLLM 0.24.0 |
 | --- | ---: | ---: |
 | RSS before stress, loaded and idle | **771 MB** | 3814 MB |
 | RSS after stress | **1064 MB** | 3863 MB |
@@ -109,8 +109,8 @@ input 1024 / output 128 for the QPS sweep. Reproducible via
 | Startup, warm compile cache | **~3.0 s** | 32.7 s |
 | GPU memory, default utilization | 28832 MiB | 30290 MiB |
 
-openinfer is a single process; vLLM RSS is summed over its process tree.
-The openinfer RSS peak during load is transient while reading safetensors
+pegainfer is a single process; vLLM RSS is summed over its process tree.
+The pegainfer RSS peak during load is transient while reading safetensors
 through `mmap`; steady-state settles at 771 MB after load.
 
 ### Serving Load
@@ -118,7 +118,7 @@ through `mmap`; steady-state settles at 771 MB after load.
 Poisson arrivals, 1024-token prompts, 128-token outputs, greedy
 (`--temperature 0`):
 
-| QPS | openinfer out tok/s | vLLM out tok/s | openinfer TTFT p50 | vLLM TTFT p50 | openinfer TPOT p50 | vLLM TPOT p50 |
+| QPS | pegainfer out tok/s | vLLM out tok/s | pegainfer TTFT p50 | vLLM TTFT p50 | pegainfer TPOT p50 | vLLM TPOT p50 |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | 126.3 | 126.2 | 45.2 ms | 54.9 ms | 6.53 ms | 6.71 ms |
 | 2 | 252.3 | 252.2 | 30.3 ms | 38.4 ms | 6.93 ms | 7.08 ms |
@@ -128,8 +128,8 @@ Poisson arrivals, 1024-token prompts, 128-token outputs, greedy
 | 12 | 1507.7 | 1506.2 | 60.0 ms | 106.0 ms | 16.75 ms | 18.36 ms |
 | 16 | **1979.9** | 1687.9 | **203.8 ms** | 3832.3 ms | **46.92 ms** | 79.42 ms |
 
-Low load (QPS 1–4) is comparable. At QPS 8–12 openinfer leads on both TTFT
-and TPOT. At QPS 16 both systems are overloaded, but openinfer edges ahead
+Low load (QPS 1–4) is comparable. At QPS 8–12 pegainfer leads on both TTFT
+and TPOT. At QPS 16 both systems are overloaded, but pegainfer edges ahead
 on throughput (1980 vs 1688 output tok/s) and stays 19× lower on TTFT.
 
 ### Qwen3-8B Serving Load
@@ -138,7 +138,7 @@ Same harness, Qwen3-8B BF16, single RTX 5090 (32 GB). The 8B model is 2×
 the weights of 4B; throughput scales accordingly until the GPU saturates
 around QPS 8:
 
-| QPS | openinfer out tok/s | vLLM out tok/s | openinfer TTFT p50 | vLLM TTFT p50 | openinfer TPOT p50 | vLLM TPOT p50 |
+| QPS | pegainfer out tok/s | vLLM out tok/s | pegainfer TTFT p50 | vLLM TTFT p50 | pegainfer TPOT p50 | vLLM TPOT p50 |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | 125.1 | 125.0 | 82.2 ms | 97.4 ms | 11.55 ms | 11.63 ms |
 | 2 | 249.9 | 250.0 | 54.1 ms | 61.5 ms | 11.46 ms | 11.57 ms |
@@ -147,7 +147,7 @@ around QPS 8:
 
 ### Qwen3-32B Serving Load
 
-Measured on **1x GH200 120GB** (aarch64, sm_90), openinfer main
+Measured on **1x GH200 120GB** (aarch64, sm_90), pegainfer main
 `5959f05`, Qwen3-32B BF16, TP1, CUDA Graph on. Load to HTTP-ready is
 46 s; the profiled KV budget is 21.4 GB (5360 blocks) next to the 63 GB
 of weights. QPS sweep with `vllm-bench`, Poisson arrivals, 1024-token
@@ -172,7 +172,7 @@ queueing.
 Greedy output matches HF `transformers` (bf16, same GPU)
 token-for-token on 4 of 5 test prompts over the first 20 tokens. The
 fifth diverges at the second generated token, where HF's own top-4
-logits sit within a 0.375 spread and openinfer emits HF's second-ranked
+logits sit within a 0.375 spread and pegainfer emits HF's second-ranked
 token, 0.25 below the top.
 
 ### Warm Prefix-Cache TTFT
@@ -181,7 +181,7 @@ For multi-turn chat and agent workloads, most of the prompt often lands as
 a warm prefix-cache hit. In this sweep, the same prompt group is sent cold
 once to populate GPU KV cache, then sent warm:
 
-| Input length | openinfer cold | openinfer warm p50 | openinfer warm p99 | vLLM warm p50 | vLLM warm p99 |
+| Input length | pegainfer cold | pegainfer warm p50 | pegainfer warm p99 | vLLM warm p50 | vLLM warm p99 |
 | ---: | ---: | ---: | ---: | ---: | ---: |
 | 256 | 16.2 ms | 8.5 ms | 8.8 ms | 14.5 ms | 19.1 ms |
 | 512 | 24.6 ms | 8.6 ms | 8.8 ms | 16.0 ms | 16.4 ms |
@@ -191,7 +191,7 @@ once to populate GPU KV cache, then sent warm:
 | 8192 | 460.0 ms | 21.6 ms | 22.8 ms | 58.6 ms | 59.9 ms |
 | 16384 | 1143.9 ms | **26.3 ms** | 27.9 ms | 95.6 ms | 98.2 ms |
 
-openinfer wins warm TTFT at every measured length; the 16k warm-cache path
+pegainfer wins warm TTFT at every measured length; the 16k warm-cache path
 is 3.6× faster than vLLM p50.
 
 ### KV Offload
@@ -226,7 +226,7 @@ about 126 ms, cold prefill about 1.14 s.
 [DSpark](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7)
 (DeepSeek-AI, Jun 2026) adds a semi-autoregressive Markov head to a DFlash
 parallel drafter, raising accepted draft length by conditioning each block
-position on the previously sampled token. openinfer supports it behind
+position on the previously sampled token. pegainfer supports it behind
 `--dflash-draft-model-path` — the drafter checkpoint goes in, the target
 model serves as-is, and greedy verify keeps output lossless.
 

@@ -163,11 +163,11 @@ concurrent_normal                16.892 ms    32.39     25.54    76.65
 ───────────────────────────────  ───────────  ───────  ────────  ───────
 concurrent_cs (__ldcs/__stcs)    16.798 ms    34.57     23.32    77.08
 
-### OpenInfer 适配 Green Context
+### PegaInfer 适配 Green Context
 
 经常我提到 Green Context 的时候，大家常问的一个问题，如果给 Decode 20%， Prefill 80% 的 SM 分配比例。那如果某个时刻，系统只有 Prefill 或者 Decode 了，那不是浪费了 SM。即使 Prefill 和 Decode 一直稳定来，那也只能 overlap 一个 batch，Prefill 可能几百 ms，而 Decode 只有几十 ms，收益可能有几 ms，没什么必要。
 
-OpenInfer 设计如下，首先我们 SM 切分是静态的，比如 P:D 是 8:2（不同 workload，不同硬件下有不同的比例）。系统启动后会有三个 stream
+PegaInfer 设计如下，首先我们 SM 切分是静态的，比如 P:D 是 8:2（不同 workload，不同硬件下有不同的比例）。系统启动后会有三个 stream
 
 1. full-SM stream: 拥有完整 SM 的 stream，用于纯 Decode 和 Prefill batch，这意味着即使系统里没有 Prefill 和 Decode 混合，也不会损失任何性能。
 2. 经过 Green Context 切分过的 Prefill-SM stream：用于专门承载 Prefill kernel。
@@ -183,11 +183,11 @@ naive 的调度算法很简单：如果系统是纯 P 或 D，就告诉 worker �
 
 当某个 scheduler loop 观测到 event 完成后，让 worker 真正触发 sync，然后触发采样，像一个正常 Prefill 一样处理好剩下工作，比如提交 KV block，提交 offloading 任务等。如果这个请求结束了 Prefill，就进入 active（也就是 Decode）队列，等待调度。
 
-最头疼的接入问题在于 GPU 内存管理是异步的，平常在一个 stream 上，分配 → Kernel → 释放，都在一个 stream 上，安全。但现在如果 kernel 在另一条 stream 跑的话，启动之前需要 sync 第一次分配的 stream，否则有可能出现 Xid。包括释放时间点。当然这可能是 OpenInfer 还没有给出好的 stream 切换方案，但总的来说，切换 stream 最头疼点在于内存。CPU RAII 和 GPU RAII 直接有个 gap。其实好像 io_uring 一大痛点也是这个生命周期的问题？ 这个话题值得出另一篇博客了，如果在 Rust 里抽象好 GPU 资源（Rust 语言社区里还有几个大佬，做的就是这类事情，也有人已经创业了）。
+最头疼的接入问题在于 GPU 内存管理是异步的，平常在一个 stream 上，分配 → Kernel → 释放，都在一个 stream 上，安全。但现在如果 kernel 在另一条 stream 跑的话，启动之前需要 sync 第一次分配的 stream，否则有可能出现 Xid。包括释放时间点。当然这可能是 PegaInfer 还没有给出好的 stream 切换方案，但总的来说，切换 stream 最头疼点在于内存。CPU RAII 和 GPU RAII 直接有个 gap。其实好像 io_uring 一大痛点也是这个生命周期的问题？ 这个话题值得出另一篇博客了，如果在 Rust 里抽象好 GPU 资源（Rust 语言社区里还有几个大佬，做的就是这类事情，也有人已经创业了）。
 
 我们直接上压测，压测我们选择用 vllm-bench（Rust 的模拟多轮对话，符合现在的 agent workload），压测分两组，重 Prefill （首轮 2k，后续轮次 512)，轻 Prefill（首轮 512，后续轮次 256)，输出都是 256 token，并发 16。结果如下
 
-重 Prefill 负载下，图中的 off 是 OpenInfer 默认流，stream 就是 naive two stream，gc x% 是指 Decode 用 x% 的 SM。
+重 Prefill 负载下，图中的 off 是 PegaInfer 默认流，stream 就是 naive two stream，gc x% 是指 Decode 用 x% 的 SM。
 
 ![qwen3_4b_multiturn_2k512_overall.png](/blog/green-ctx/qwen3_4b_multiturn_2k512_overall.png)
 
@@ -205,6 +205,6 @@ naive 的调度算法很简单：如果系统是纯 P 或 D，就告诉 worker �
 
 很有意思的一点是，上了 Green Context 在 5090 上经常打到功耗墙，不知道商业卡会不会稍微好一些。
 
-至于 CPD 怎么做，其实我在写 OpenInfer 的时候，我就有一个想法，路由-引擎-KV cache 三位一体的 co-design，现如今后半部分我应该是比较熟悉了。引擎部分还有一些坑要继续填，推测解码，然后是大 MOE 的推理建模。
+至于 CPD 怎么做，其实我在写 PegaInfer 的时候，我就有一个想法，路由-引擎-KV cache 三位一体的 co-design，现如今后半部分我应该是比较熟悉了。引擎部分还有一些坑要继续填，推测解码，然后是大 MOE 的推理建模。
 
 下一篇写推测解码，其实 draft 已经有了，DFlash，不过下周再写博客吧。

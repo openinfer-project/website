@@ -6,7 +6,7 @@ export const SITE_ROUTES = [
 	'/blog/weight-loading/',
 	'/blog/speculative-decoding/',
 	'/blog/cuda-graph-export/',
-	'/blog/openinfer-010/',
+	'/blog/pegainfer-010/',
 	'/blog/green-ctx/',
 	'/models/qwen3-4b/',
 	'/models/qwen35/',
@@ -20,7 +20,7 @@ export const DIST_PAGES = [
 	'blog/weight-loading/index.html',
 	'blog/speculative-decoding/index.html',
 	'blog/cuda-graph-export/index.html',
-	'blog/openinfer-010/index.html',
+	'blog/pegainfer-010/index.html',
 	'blog/green-ctx/index.html',
 	'models/qwen3-4b/index.html',
 	'models/qwen35/index.html',
@@ -29,4 +29,6 @@ export const DIST_PAGES = [
 export const REDIRECTS = [
 	['/models/qwen35-4b', '/models/qwen35/', 301],
 	['/models/qwen35-4b/', '/models/qwen35/', 301],
+	['/blog/openinfer-010', '/blog/pegainfer-010/', 301],
+	['/blog/openinfer-010/', '/blog/pegainfer-010/', 301],
 ];

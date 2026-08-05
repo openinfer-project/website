@@ -1,6 +1,6 @@
 ---
-title: "OpenInfer Weight Loading: The Complete Data Path from Safetensors to GPU"
-description: "Explains how OpenInfer locates weights from the Safetensors index, handles TP/FP8/EP sharding, and uses two-slot pinned staging to overlap CPU preparation with asynchronous H2D—and why a faster local stage did not lead to a faster total time."
+title: "PegaInfer Weight Loading: The Complete Data Path from Safetensors to GPU"
+description: "Explains how PegaInfer locates weights from the Safetensors index, handles TP/FP8/EP sharding, and uses two-slot pinned staging to overlap CPU preparation with asynchronous H2D—and why a faster local stage did not lead to a faster total time."
 publishedDate: 2026-07-28
 authors:
   - name: FeathBow
@@ -14,7 +14,7 @@ import StagingHero from '../../../components/StagingHero.astro';
 
 Authors: [FeathBow](https://github.com/FeathBow), [Jinyang Su](https://github.com/xiaguan)
 
-**OpenInfer starts a Qwen3-4B service in just 2.36 seconds.**<br />**Even the roughly 700 GiB GLM-5.2-FP8 takes only 25.73 seconds.**
+**PegaInfer starts a Qwen3-4B service in just 2.36 seconds.**<br />**Even the roughly 700 GiB GLM-5.2-FP8 takes only 25.73 seconds.**
 
 <StagingHero />
 
@@ -23,13 +23,13 @@ What does faster engine startup mean?
 2. Lower autoscaling cold-start latency: for models such as Qwen3-4B/8B, new replicas can be started within seconds to handle rising traffic, including Serverless Inference.
 3. Finer-grained resource reorganization for schedulers: when switching P/D roles, there is no longer a need to worry about startup taking tens of minutes during the transition.
 
-> This article first explains how OpenInfer loads weights and how it optimizes weight loading step by step. It then analyzes a set of independent transfer experiments.
+> This article first explains how PegaInfer loads weights and how it optimizes weight loading step by step. It then analyzes a set of independent transfer experiments.
 
 ## TL;DR
 
 - **How weights move from Safetensors to the GPU**
 - **How TP, FP8, and EP change the loading process**
-- **How OpenInfer optimizes the transfer path**
+- **How PegaInfer optimizes the transfer path**
 
 
 
@@ -149,7 +149,7 @@ This is the method described above.
 
 ### TP=2 Column Shard: Extract Row by Row
 
-OpenInfer's Qwen3 TP uses this path for `o_proj` and `down_proj`. Take `o_proj` as an example:
+PegaInfer's Qwen3 TP uses this path for `o_proj` and `down_proj`. Take `o_proj` as an example:
 
 ```
 File: o_proj BF16[2560, 4096]
@@ -215,7 +215,7 @@ GPU 7: experts [224, 256)
 
 We explained the logic that weight loading needs to handle above. It amounts to reading from disk, possibly processing some data selectively, allocating a GPU buffer, and copying the data from Host to Device.
 
-How does OpenInfer optimize the time spent in this stage?
+How does PegaInfer optimize the time spent in this stage?
 
 To break down the costs of different transfer paths, we compare three methods in an independent microbenchmark:
 
@@ -226,7 +226,7 @@ To break down the costs of different transfer paths, we compare three methods in
 | Double pinned staging | mmap → multithreaded CPU copy → 2×64 MiB pinned → async H2D | CPU fill overlaps with DMA; fixed 128 MiB pinned footprint | One additional CPU copy |
 | Full registered mmap | register the entire mmap range → direct H2D → unregister | Fast pure DMA phase; no staging copy during H2D | register/unregister grows with the number of pages and is platform-sensitive |
 
-These three are comparison paths in the microbenchmark, not OpenInfer Qwen3 runtime options; OpenInfer Qwen3 currently uses double pinned staging.
+These three are comparison paths in the microbenchmark, not PegaInfer Qwen3 runtime options; PegaInfer Qwen3 currently uses double pinned staging.
 
 The data comes from a hot-page-cache microbenchmark that reads real model safetensors on real hardware (initialization paths such as CUDA context setup are the same for all three paths and are excluded consistently).
 
@@ -277,7 +277,7 @@ Registration is not limited to this one method, so we tested four registered var
 
 This method provides a benefit in only one case: at 1 GiB on the H200, full registration takes 63.5 ms while staging takes 75.2 ms. Whether staging or registration is better therefore depends on both the platform and the size.
 
-In most tested cases, however, staging is the better one, so OpenInfer currently uses staging.
+In most tested cases, however, staging is the better one, so PegaInfer currently uses staging.
 
 ### Deeper Pipeline, Fewer Bubbles → Better Performance?
 
@@ -303,7 +303,7 @@ While the ring is temporarily shallow, workers are still affected by backpressur
 
 ### End-to-End Startup: RTX 5090 TP1 (main e3f91120)
 
-After the optimizations above, with a warm page cache, how long does it take from the user entering the startup command until OpenInfer can provide an HTTP service? The table below shows the results of 10 runs.
+After the optimizations above, with a warm page cache, how long does it take from the user entering the startup command until PegaInfer can provide an HTTP service? The table below shows the results of 10 runs.
 
 | Model | Checkpoint | HTTP-ready | Engine loaded | GPU-model loaded | Loader execute + final stream drain |
 | --- | --- | --- | --- | --- | --- |
@@ -323,7 +323,7 @@ For comparison, with vLLM 0.26.0 on the same 8× RTX 5090 host, single-GPU TP1, 
 ### End-to-End Startup: GLM-5.2-FP8, 4× GB300 ep4 (main e3f91120)
 
 ```bash
- <openinfer-release-binary> \
+ <pegainfer-release-binary> \
     --model-path <GLM-5.2-FP8> \
     --moe-topo ep4 \
     --glm52-native-mtp \

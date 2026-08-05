@@ -25,7 +25,7 @@ const copy = Buffer.from(`
 		<circle cx="1110" cy="600" r="300" fill="#8b5cf6" opacity=".06"/>
 		<rect x="525" y="174" width="92" height="8" rx="4" fill="url(#accent)"/>
 		<text x="525" y="282" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif"
-			font-size="82" font-weight="700" letter-spacing="-3">openinfer</text>
+			font-size="82" font-weight="700" letter-spacing="-3">pegainfer</text>
 		<text x="530" y="348" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif"
 			font-size="32" font-weight="400">Pure Rust + CUDA</text>
 		<text x="530" y="395" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif"

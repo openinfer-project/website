@@ -20,14 +20,14 @@ function softwareApplicationJsonLd() {
 	return {
 		'@context': 'https://schema.org',
 		'@type': 'SoftwareApplication',
-		name: 'openinfer',
+		name: 'pegainfer',
 		description:
 			'Pure Rust + CUDA LLM inference engine — no PyTorch, OpenAI-compatible, serves Qwen3 to Kimi-K2.',
 		url: SITE,
 		applicationCategory: 'DeveloperApplication',
 		operatingSystem: 'Linux, Windows',
 		programmingLanguage: ['Rust', 'CUDA'],
-		codeRepository: 'https://github.com/openinfer-project/openinfer',
+		codeRepository: 'https://github.com/pegainfer-project/pegainfer',
 		license: 'https://www.apache.org/licenses/LICENSE-2.0',
 		image: SOCIAL_IMAGE,
 		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
@@ -44,7 +44,7 @@ export const onRequest = defineRouteMiddleware((context) => {
 
 	setMeta(route.head, 'property', 'og:type', isBlogPost ? 'article' : 'website');
 	setMeta(route.head, 'property', 'og:image', SOCIAL_IMAGE);
-	setMeta(route.head, 'property', 'og:image:alt', 'openinfer — Pure Rust + CUDA LLM Inference Engine');
+	setMeta(route.head, 'property', 'og:image:alt', 'pegainfer — Pure Rust + CUDA LLM Inference Engine');
 	setMeta(route.head, 'property', 'og:image:type', 'image/png');
 	setMeta(route.head, 'property', 'og:image:width', '1200');
 	setMeta(route.head, 'property', 'og:image:height', '630');
@@ -53,7 +53,7 @@ export const onRequest = defineRouteMiddleware((context) => {
 		route.head,
 		'name',
 		'twitter:image:alt',
-		'openinfer — Pure Rust + CUDA LLM Inference Engine',
+		'pegainfer — Pure Rust + CUDA LLM Inference Engine',
 	);
 
 	if (isBlogPost && data.publishedDate && data.authors?.length) {
@@ -82,10 +82,10 @@ export const onRequest = defineRouteMiddleware((context) => {
 				})),
 				image: data.seoImage ? new URL(data.seoImage, SITE).href : SOCIAL_IMAGE,
 				mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
-				isPartOf: { '@type': 'Blog', '@id': `${SITE}/blog/`, name: 'openinfer Blog' },
+				isPartOf: { '@type': 'Blog', '@id': `${SITE}/blog/`, name: 'pegainfer Blog' },
 				publisher: {
 					'@type': 'Organization',
-					name: 'openinfer',
+					name: 'pegainfer',
 					url: SITE,
 					logo: { '@type': 'ImageObject', url: `${SITE}/favicon.png` },
 				},
@@ -106,10 +106,10 @@ export const onRequest = defineRouteMiddleware((context) => {
 				'@context': 'https://schema.org',
 				'@type': 'Blog',
 				'@id': `${SITE}/blog/`,
-				name: 'openinfer Blog',
+				name: 'pegainfer Blog',
 				description: data.description,
 				url: canonical,
-				publisher: { '@type': 'Organization', name: 'openinfer', url: SITE },
+				publisher: { '@type': 'Organization', name: 'pegainfer', url: SITE },
 				inLanguage: 'en',
 			}),
 		});

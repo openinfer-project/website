@@ -1,6 +1,6 @@
-# openinfer website
+# pegainfer website
 
-Documentation site for [openinfer](https://github.com/openinfer-project/openinfer),
+Documentation site for [pegainfer](https://github.com/pegainfer-project/pegainfer),
 built with [Astro Starlight](https://starlight.astro.build/) and deployed on
 Cloudflare Workers (static assets).
 

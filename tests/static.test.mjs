@@ -9,7 +9,7 @@ const blogPosts = [
 	['blog/green-ctx/index.html', '2026-06-20'],
 	['blog/speculative-decoding/index.html', '2026-07-17'],
 	['blog/cuda-graph-export/index.html', '2026-07-10'],
-	['blog/openinfer-010/index.html', '2026-06-13'],
+	['blog/pegainfer-010/index.html', '2026-06-13'],
 	['blog/weight-loading/index.html', '2026-07-28'],
 ];
 
@@ -49,7 +49,7 @@ describe('static build output', () => {
 	it('404 page is Starlight styled, not a bare error', () => {
 		const html = readFileSync(join(distDir, '404.html'), 'utf8');
 		assert.match(html, /Page not found/i);
-		assert.match(html, /starlight|openinfer/i);
+		assert.match(html, /starlight|pegainfer/i);
 	});
 
 	it('homepage has website social metadata and SoftwareApplication structured data', () => {

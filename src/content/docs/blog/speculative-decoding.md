@@ -8,7 +8,7 @@ authors:
 seoImage: /blog/speculative-decoding/cover.webp
 ---
 
-We have already supported DFlash and DSpark speculative decoding on [OpenInfer](https://open-infer.org/models/qwen3-4b/#dspark-speculative-decoding) Qwen3-4B. In a ShareGPT test on a single RTX 5090, DSpark increased single-stream throughput from 170 to 381 token/s, and reduced TPOT from 5.83 ms to 2.96 ms. When concurrency is 4, throughput also increased from 576 to 1288 token/s, while keeping the output lossless.
+We have already supported DFlash and DSpark speculative decoding on [PegaInfer](https://open-infer.org/models/qwen3-4b/#dspark-speculative-decoding) Qwen3-4B. In a ShareGPT test on a single RTX 5090, DSpark increased single-stream throughput from 170 to 381 token/s, and reduced TPOT from 5.83 ms to 2.96 ms. When concurrency is 4, throughput also increased from 576 to 1288 token/s, while keeping the output lossless.
 
 This article will break down speculative decoding itself: how a draft model is trained, why neither draft nor verify is better when it is longer, and how the latest DSpark does dynamic verify.
 
@@ -178,7 +178,7 @@ Why must it hold?
 - **The machine piles too little ($p > q$)**: I accept everything the machine piles (overlap $= q$), and I fill the remaining difference myself (gap $= p - q$). Together they are exactly $p$.
 - **The machine piles too much ($p < q$)**: I have enough, and I only use as much as I need (overlap $= p$). There is no gap, so gap $= 0$. Together they are still $p$. The extra part the machine piles is not in this identity. It is the part that needs to be returned with probability during receiving, and it does not enter the shelf.
 
-Another more engineering-oriented way, and also the current OpenInfer way: first let the main model sample one token according to its own sampling, then compare it with the token given by draft. If they are the same, accept it; if they are different, discard it. This slightly affects acceptance rate, but the measured impact is small. Unless the sampling parameters are very "open," most of the time the model output is concentrated on a few tokens, close to greedy.
+Another more engineering-oriented way, and also the current PegaInfer way: first let the main model sample one token according to its own sampling, then compare it with the token given by draft. If they are the same, accept it; if they are different, discard it. This slightly affects acceptance rate, but the measured impact is small. Unless the sampling parameters are very "open," most of the time the model output is concentrated on a few tokens, close to greedy.
 
 But this depends on the real workload and the real MTP, including sampling parameters received during real serving.
 
@@ -210,7 +210,7 @@ Although a tree can pull the accepted length very high and can greatly improve t
 
 EAGLE-3 takes hidden states from three layers at the same time: $l,m,h$, and then uses a fully connected layer to reduce them to "one layer," so it obtains a feature that integrates information from different levels. At the same time, EAGLE-3's training objective only looks at the token distribution, which makes EAGLE-3 easier to scale.
 
-This draft can also be replaced with a diffusion model, generating multiple tokens at once, such as [DFlash](https://arxiv.org/pdf/2602.06036), which is also the DFlash that OpenInfer integrated.
+This draft can also be replaced with a diffusion model, generating multiple tokens at once, such as [DFlash](https://arxiv.org/pdf/2602.06036), which is also the DFlash that PegaInfer integrated.
 
 DSpark's loss also has two parts: on one hand it needs to guess accurately, and on the other hand the distribution needs to be close.
 
