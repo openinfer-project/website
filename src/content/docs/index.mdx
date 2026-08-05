@@ -1,16 +1,16 @@
 ---
-title: openinfer
+title: pegainfer
 description: "Pure Rust + CUDA LLM inference engine — no PyTorch, OpenAI-compatible, serving models from Qwen3 to the trillion-parameter Kimi-K2."
-# Starlight renders the homepage <title> as "openinfer | openinfer"
+# Starlight renders the homepage <title> as "pegainfer | pegainfer"
 # (page title | site title). Override it with a descriptive one so the
 # homepage also ranks for category terms, not just the brand name.
 head:
   - tag: title
-    content: "openinfer — Pure Rust + CUDA LLM Inference Engine"
+    content: "pegainfer — Pure Rust + CUDA LLM Inference Engine"
   - tag: meta
     attrs:
       property: og:title
-      content: "openinfer — Pure Rust + CUDA LLM Inference Engine"
+      content: "pegainfer — Pure Rust + CUDA LLM Inference Engine"
 ---
 
 A from-scratch LLM inference engine in pure Rust + CUDA. OpenAI-compatible. Serves Qwen3 to Kimi-K2.
@@ -22,13 +22,13 @@ A from-scratch LLM inference engine in pure Rust + CUDA. OpenAI-compatible. Serv
 - **Up to 8-GPU expert parallelism** for large MoE deployments.
 - **OpenAI-compatible API** — point any SDK at `http://localhost:8000/v1`.
 
-See the [getting started guide](/getting-started/) or the [GitHub repository](https://github.com/openinfer-project/openinfer).
+See the [getting started guide](/getting-started/) or the [GitHub repository](https://github.com/pegainfer-project/pegainfer).
 
 ## Quick start
 
 ```bash
-git clone https://github.com/openinfer-project/openinfer
-cd openinfer
+git clone https://github.com/pegainfer-project/pegainfer
+cd pegainfer
 cargo run --release -- --model-path models/Qwen3-4B
 ```
 
@@ -45,29 +45,29 @@ curl -s http://localhost:8000/v1/completions \
 - **[Speculative Decoding](/blog/speculative-decoding/)** (2026-07-17) — From output entropy and verification correctness to EAGLE draft models and dynamic verify length.
 - **[See Qwen3 Decode as a CUDA Graph](/blog/cuda-graph-export/)** (2026-07-10) — Export the live decode graph as a detailed DOT and a folded high-resolution PNG.
 - **[Co-locating Prefill and Decode on One GPU](/blog/green-ctx/)** (2026-06-20) — CUDA Green Contexts for stable decode latency without losing throughput.
-- **[OpenInfer 0.1.0: Production-Grade Rust Inference](/blog/openinfer-010/)** (2026-06-13) — Architecture, footprint, cold-start, and RTX 5090 serving benchmarks.
+- **[PegaInfer 0.1.0: Production-Grade Rust Inference](/blog/pegainfer-010/)** (2026-06-13) — Architecture, footprint, cold-start, and RTX 5090 serving benchmarks.
 
 ## Footprint
 
 No PyTorch, no JIT, no runtime compilation. The whole stack — weight loading, paged KV cache, schedulers, kernels — is Rust + CUDA from scratch. Resident memory stays a fraction of vLLM's at the same load.
 
-![Process RSS: openinfer vs vLLM](/blog/openinfer-010/rss.png)
+![Process RSS: pegainfer vs vLLM](/blog/pegainfer-010/rss.png)
 
-*Process RSS · openinfer vs vLLM · Qwen3-4B BF16*
+*Process RSS · pegainfer vs vLLM · Qwen3-4B BF16*
 
 ## Startup
 
 3s warm start vs vLLM's 32.7s — about 11×. No runtime compilation, no JIT warmup: once it's built, what ships is stable and predictable.
 
-![Cold start: openinfer vs vLLM](/blog/openinfer-010/startup.png)
+![Cold start: pegainfer vs vLLM](/blog/pegainfer-010/startup.png)
 
-*Warm start · openinfer 3.0s vs vLLM 32.7s*
+*Warm start · pegainfer 3.0s vs vLLM 32.7s*
 
 ## Throughput
 
-Same vLLM bench-serve client, same Poisson arrivals, same seed on RTX 5090. At the saturation point openinfer pushes 6% higher throughput than vLLM 0.22.1.
+Same vLLM bench-serve client, same Poisson arrivals, same seed on RTX 5090. At the saturation point pegainfer pushes 6% higher throughput than vLLM 0.22.1.
 
-![Serving sweep vs vLLM on RTX 5090](/blog/openinfer-010/qps.png)
+![Serving sweep vs vLLM on RTX 5090](/blog/pegainfer-010/qps.png)
 
 *Serving sweep · RTX 5090 · vs vLLM 0.22.1*
 
@@ -75,7 +75,7 @@ Same vLLM bench-serve client, same Poisson arrivals, same seed on RTX 5090. At t
 
 Decode is captured as a CUDA graph with pre-allocated buffers, keeping per-token overhead low and decode latency flat across context lengths.
 
-![Warm prefix-cache-hit TTFT sweep](/blog/openinfer-010/warm_ttft.png)
+![Warm prefix-cache-hit TTFT sweep](/blog/pegainfer-010/warm_ttft.png)
 
 *Warm prefix-cache TTFT · by input length*
 

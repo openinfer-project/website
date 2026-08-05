@@ -1,10 +1,10 @@
 # AGENTS.md
 
-Guide for AI agents and contributors working on the openinfer documentation site.
+Guide for AI agents and contributors working on the pegainfer documentation site.
 
 ## Project overview
 
-Static documentation site for [openinfer](https://github.com/openinfer-project/openinfer), built with [Astro](https://astro.build/) and [Starlight](https://starlight.astro.build/), deployed to Cloudflare Workers as static assets.
+Static documentation site for [pegainfer](https://github.com/pegainfer-project/pegainfer), built with [Astro](https://astro.build/) and [Starlight](https://starlight.astro.build/), deployed to Cloudflare Workers as static assets.
 
 - **Production URL:** https://open-infer.org
 - **Node:** 22+
@@ -52,10 +52,10 @@ All pages live under `src/content/docs/`:
 | `blog/*.md` | Blog posts |
 | `models/*.md` | Per-model benchmark and usage pages |
 
-Benchmark images go in `public/` (e.g. `public/blog/openinfer-010/qps.png`, `public/models/qwen3-4b/perf.png`) and are referenced with absolute paths in Markdown:
+Benchmark images go in `public/` (e.g. `public/blog/pegainfer-010/qps.png`, `public/models/qwen3-4b/perf.png`) and are referenced with absolute paths in Markdown:
 
 ```markdown
-![Serving sweep](/blog/openinfer-010/qps.png)
+![Serving sweep](/blog/pegainfer-010/qps.png)
 ```
 
 ### Adding a new page
@@ -73,7 +73,7 @@ The site uses `trailingSlash: 'always'`. Internal links and sidebar entries must
 
 - **Doc-first, minimal** — inspired by [uv docs](https://docs.astral.sh/uv): plain typography, flat borders, no marketing chrome.
 - **Fonts:** Roboto + Roboto Mono (loaded in `astro.config.mjs` `head`).
-- **Code blocks:** plain by default (no terminal frame). The `openinfer-plain-code` Expressive Code plugin sets `frame: 'none'` unless `frame=` is explicitly set in a fence meta string.
+- **Code blocks:** plain by default (no terminal frame). The `pegainfer-plain-code` Expressive Code plugin sets `frame: 'none'` unless `frame=` is explicitly set in a fence meta string.
 - **Theme tweaks** belong in `src/styles/custom.css`. Avoid one-off inline styles in content files.
 - **Blog animations** live in `src/components/` as Astro components embedded from MDX. Keep them dependency-free (scoped CSS + vanilla JS, no animation/chart libraries), trigger on scroll into view, and render a final static frame when `prefers-reduced-motion` is set or JS is unavailable.
 - **Logo:** configured as a string path in `astro.config.mjs` (`logo: { src: './src/assets/logo.png', ... }`). Do not pass an imported `ImageMetadata` object.

@@ -1,9 +1,9 @@
 ---
 title: Getting Started
-description: Build openinfer from source and serve your first model.
+description: Build pegainfer from source and serve your first model.
 ---
 
-openinfer builds from source with Cargo. Python is needed once at build time
+pegainfer builds from source with Cargo. Python is needed once at build time
 for Triton AOT kernel compilation — the running server has no Python
 dependency.
 
@@ -17,8 +17,8 @@ dependency.
 ## Build & run
 
 ```bash
-git clone https://github.com/openinfer-project/openinfer
-cd openinfer
+git clone https://github.com/pegainfer-project/pegainfer
+cd pegainfer
 
 # One-time Python setup for Triton AOT kernel compilation
 uv venv && source .venv/bin/activate
@@ -29,7 +29,7 @@ huggingface-cli download Qwen/Qwen3-4B --local-dir models/Qwen3-4B
 
 # Build & start the server on port 8000
 export CUDA_HOME=/usr/local/cuda
-export OPENINFER_TRITON_PYTHON=.venv/bin/python
+export PEGAINFER_TRITON_PYTHON=.venv/bin/python
 cargo run --release -- --model-path models/Qwen3-4B
 ```
 

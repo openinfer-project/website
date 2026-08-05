@@ -1,17 +1,17 @@
 ---
 title: Qwen3.5-4B / 9B / 27B
-description: "Running the Qwen3.5 family on openinfer: build with the qwen35 feature, launch, serving performance, and hybrid-attention architecture notes."
+description: "Running the Qwen3.5 family on pegainfer: build with the qwen35 feature, launch, serving performance, and hybrid-attention architecture notes."
 ---
 
 Qwen3.5 is a hybrid-attention model line: 3 of every 4 layers use linear
 attention (gated delta rule), and only every 4th layer is full attention.
-openinfer serves the family (4B / 9B / 27B, text-only) behind the
+pegainfer serves the family (4B / 9B / 27B, text-only) behind the
 `qwen35` cargo feature with CUDA Graph decode and paged KV cache for
 the full-attention layers.
 
 ## Build
 
-Qwen3.5 is the only openinfer model line that needs Python at **build
+Qwen3.5 is the only pegainfer model line that needs Python at **build
 time**: its linear-attention prefill kernels are Triton AOT-generated.
 There is no Python at runtime — the compiled kernels link into the same
 single Rust binary.
@@ -20,13 +20,13 @@ single Rust binary.
 # One-time: a Python environment with Triton for the AOT step
 uv venv && uv pip install triton
 
-# openinfer picks up .venv/bin/python automatically, or point at one:
-export OPENINFER_TRITON_PYTHON=.venv/bin/python
+# pegainfer picks up .venv/bin/python automatically, or point at one:
+export PEGAINFER_TRITON_PYTHON=.venv/bin/python
 ```
 
 ## Launch
 
-From the openinfer workspace root:
+From the pegainfer workspace root:
 
 ```bash
 huggingface-cli download Qwen/Qwen3.5-4B --local-dir models/Qwen3.5-4B
@@ -71,7 +71,7 @@ All three sizes are gated by the same HF bf16 logits golden tests
 ## Performance
 
 Measured on **1x RTX 5070 Ti 16GB**, driver 610.43.02, CUDA 13.3 build,
-Qwen3.5-4B BF16 weights, TP1, CUDA Graph decode on, openinfer main
+Qwen3.5-4B BF16 weights, TP1, CUDA Graph decode on, pegainfer main
 `baaffd0`. `vllm-bench` client on localhost, random dataset, 1024-token
 prompts, 128-token outputs, greedy, seed 42 — reproducible via
 `tools/bench/run_serving_bench.sh` in the repo.
